@@ -37,6 +37,35 @@
   .btn-stop:hover { background: rgba(248,113,113,.1); }
   .btn-stop.show { display: inline-block; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  
+  /* API 设置面板样式 */
+  .settings-btn { position: relative; }
+  .settings-panel {
+    position: absolute; top: 45px; right: 20px; width: 380px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 16px; z-index: 1000;
+    box-shadow: 0 10px 40px rgba(0,0,0,.4); display: none;
+  }
+  .settings-panel.show { display: block; }
+  .settings-panel h3 { margin-bottom: 12px; font-size: 14px; color: var(--text); }
+  .settings-group { margin-bottom: 14px; }
+  .settings-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .settings-group input {
+    width: 100%; padding: 8px 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--rs);
+    color: var(--text); font-size: 12px; font-family: monospace;
+  }
+  .settings-group input:focus { outline: none; border-color: var(--accent); }
+  .settings-save {
+    width: 100%; padding: 8px; background: var(--accent);
+    border: none; border-radius: var(--rs); color: #fff;
+    font-size: 12px; cursor: pointer; margin-top: 8px;
+  }
+  .settings-save:hover { background: #5a7de8; }
+  .settings-note {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text3); line-height: 1.5;
+  }
 
   .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -193,6 +222,33 @@
     <button class="btn-sm btn-new" onclick="newChat(event)">＋ 新对话</button>
     <button class="btn-sm" onclick="showCronPanel()">⏰ 定时任务</button>
     <button class="btn-sm" onclick="clearAllHistory()">清空记录</button>
+    <button class="btn-sm" onclick="toggleSettings()" title="API设置">⚙️ 设置</button>
+  </div>
+  
+  <!-- API 设置面板 -->
+  <div class="settings-panel" id="settingsPanel">
+    <h3>🔑 API 配置</h3>
+    <div class="settings-group">
+      <label>Kimi API Key</label>
+      <input type="password" id="settingKimiKey" placeholder="sk-...">
+    </div>
+    <div class="settings-group">
+      <label>Kimi Base URL (可选)</label>
+      <input type="text" id="settingKimiUrl" placeholder="https://api.moonshot.cn/v1">
+    </div>
+    <div class="settings-group">
+      <label>通义千问 API Key</label>
+      <input type="password" id="settingQwenKey" placeholder="sk-...">
+    </div>
+    <div class="settings-group">
+      <label>通义千问 Base URL (可选)</label>
+      <input type="text" id="settingQwenUrl" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+    </div>
+    <button class="settings-save" onclick="saveSettings()">💾 保存配置</button>
+    <div class="settings-note">
+      💡 配置保存在浏览器本地(localStorage)，不会上传到服务器。<br>
+      每个人使用自己的 API Key，互不干扰。
+    </div>
   </div>
 </header>
 
@@ -253,10 +309,17 @@ const MODELS = {
     { id: 'qwen3-coder-plus',     label: 'coder-plus' },
   ],
 };
+// 从 localStorage 读取用户自己的 API 配置
+// 每个人可以在浏览器中设置自己的 API Key
 const PROVIDERS = {
-  kimi: { base_url: 'https://api.moonshot.cn/v1', api_key: '' },
-  qwen: { base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-          api_key: 'sk-37c725a02b4b47a1ba6fe3f78a48e7a6' },
+  kimi: { 
+    base_url: localStorage.getItem('kimi_base_url') || 'https://api.moonshot.cn/v1', 
+    api_key: localStorage.getItem('kimi_api_key') || '' 
+  },
+  qwen: { 
+    base_url: localStorage.getItem('qwen_base_url') || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    api_key: localStorage.getItem('qwen_api_key') || '' 
+  },
 };
 
 let selModel = localStorage.getItem('selModel') || 'kimi-k2.5';
@@ -902,6 +965,61 @@ cronStyles.textContent = `
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 `;
 document.head.appendChild(cronStyles);
+
+// ===== API 设置功能 =====
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  panel.classList.toggle('show');
+  
+  // 加载已保存的配置到输入框
+  if (panel.classList.contains('show')) {
+    document.getElementById('settingKimiKey').value = localStorage.getItem('kimi_api_key') || '';
+    document.getElementById('settingKimiUrl').value = localStorage.getItem('kimi_base_url') || '';
+    document.getElementById('settingQwenKey').value = localStorage.getItem('qwen_api_key') || '';
+    document.getElementById('settingQwenUrl').value = localStorage.getItem('qwen_base_url') || '';
+  }
+}
+
+function saveSettings() {
+  const kimiKey = document.getElementById('settingKimiKey').value.trim();
+  const kimiUrl = document.getElementById('settingKimiUrl').value.trim();
+  const qwenKey = document.getElementById('settingQwenKey').value.trim();
+  const qwenUrl = document.getElementById('settingQwenUrl').value.trim();
+  
+  // 保存到 localStorage
+  if (kimiKey) localStorage.setItem('kimi_api_key', kimiKey);
+  else localStorage.removeItem('kimi_api_key');
+  
+  if (kimiUrl) localStorage.setItem('kimi_base_url', kimiUrl);
+  else localStorage.removeItem('kimi_base_url');
+  
+  if (qwenKey) localStorage.setItem('qwen_api_key', qwenKey);
+  else localStorage.removeItem('qwen_api_key');
+  
+  if (qwenUrl) localStorage.setItem('qwen_base_url', qwenUrl);
+  else localStorage.removeItem('qwen_base_url');
+  
+  // 更新 PROVIDERS
+  PROVIDERS.kimi.api_key = kimiKey;
+  PROVIDERS.kimi.base_url = kimiUrl || 'https://api.moonshot.cn/v1';
+  PROVIDERS.qwen.api_key = qwenKey;
+  PROVIDERS.qwen.base_url = qwenUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  
+  // 关闭面板
+  document.getElementById('settingsPanel').classList.remove('show');
+  
+  // 提示
+  alert('✅ API 配置已保存！');
+}
+
+// 点击面板外部关闭设置面板
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('settingsPanel');
+  const btn = e.target.closest('.btn-sm[onclick="toggleSettings()"]');
+  if (!panel.contains(e.target) && !btn && panel.classList.contains('show')) {
+    panel.classList.remove('show');
+  }
+});
 </script>
 </body>
 </html>
