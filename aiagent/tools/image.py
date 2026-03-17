@@ -89,7 +89,7 @@ async def _image_handler(
                     fname = os.path.basename(raw_path)
                     upload_resp = await client.files.create(
                         file=(fname, f, mime),
-                        purpose="vision",
+                        purpose="image",  # kimi 用 "image" 而不是 "vision"
                     )
                 file_id = upload_resp.id
                 content.append({
@@ -97,7 +97,12 @@ async def _image_handler(
                     "image_url": {"url": f"moonshot://{file_id}"},
                 })
             except Exception as e:
-                return f"Error uploading image to moonshot {p!r}: {e}"
+                # 如果上传失败，尝试直接用 base64（某些 kimi 版本支持）
+                data_part = url_or_data.split(",", 1)[1]
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{data_part}"},
+                })
         elif url_or_data.startswith("data:"):
             # 标准 OpenAI base64
             data_part = url_or_data.split(",", 1)[1]
