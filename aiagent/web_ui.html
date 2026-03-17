@@ -66,6 +66,10 @@
     margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
     font-size: 11px; color: var(--text3); line-height: 1.5;
   }
+  .settings-loading { color: var(--text3); font-size: 13px; text-align: center; padding: 20px; }
+  .settings-provider { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .settings-provider:last-child { border-bottom: none; margin-bottom: 0; }
+  .settings-provider h4 { margin-bottom: 10px; font-size: 13px; color: var(--accent); }
 
   .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -228,26 +232,14 @@
   <!-- API 设置面板 -->
   <div class="settings-panel" id="settingsPanel">
     <h3>🔑 API 配置</h3>
-    <div class="settings-group">
-      <label>Kimi API Key</label>
-      <input type="password" id="settingKimiKey" placeholder="sk-...">
-    </div>
-    <div class="settings-group">
-      <label>Kimi Base URL (可选)</label>
-      <input type="text" id="settingKimiUrl" placeholder="https://api.moonshot.cn/v1">
-    </div>
-    <div class="settings-group">
-      <label>通义千问 API Key</label>
-      <input type="password" id="settingQwenKey" placeholder="sk-...">
-    </div>
-    <div class="settings-group">
-      <label>通义千问 Base URL (可选)</label>
-      <input type="text" id="settingQwenUrl" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+    <div id="settingsContent">
+      <!-- 动态生成，根据服务器配置的提供商显示 -->
+      <div class="settings-loading">加载中...</div>
     </div>
     <button class="settings-save" onclick="saveSettings()">💾 保存配置</button>
     <div class="settings-note">
-      💡 配置保存在浏览器本地(localStorage)，不会上传到服务器。<br>
-      每个人使用自己的 API Key，互不干扰。
+      💡 服务器已配置的 API Key 会自动使用，无需手动输入。<br>
+      如需覆盖服务器配置，可在上方输入自己的 Key。
     </div>
   </div>
 </header>
@@ -309,54 +301,74 @@ const MODELS = {
     { id: 'qwen3-coder-plus',     label: 'coder-plus' },
   ],
 };
-// 默认配置（会从服务器 /config API 加载）
-const PROVIDERS = {
-  kimi: { 
-    base_url: 'https://api.moonshot.cn/v1', 
-    api_key: '' 
-  },
-  qwen: { 
-    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    api_key: '' 
-  },
-};
+// 提供商配置（从服务器 /config API 加载）
+let PROVIDERS = {};
+let AVAILABLE_PROVIDERS = [];
 
-// 从服务器加载配置（.env 中的配置）
+// 从服务器加载配置
 async function loadServerConfig() {
   try {
     const res = await fetch('/config');
     const cfg = await res.json();
     
-    // 如果服务器配置了 base_url，使用服务器的
-    if (cfg.base_url) {
-      // 根据 base_url 判断 provider
-      if (cfg.base_url.includes('moonshot')) {
-        PROVIDERS.kimi.base_url = cfg.base_url;
-        PROVIDERS.kimi.api_key = cfg.api_key || localStorage.getItem('kimi_api_key') || '';
-        selProvider = 'kimi';
-        selModel = cfg.model || 'kimi-k2.5';
-      } else if (cfg.base_url.includes('aliyun') || cfg.base_url.includes('dashscope')) {
-        PROVIDERS.qwen.base_url = cfg.base_url;
-        PROVIDERS.qwen.api_key = cfg.api_key || localStorage.getItem('qwen_api_key') || '';
-        selProvider = 'qwen';
-        selModel = cfg.model || 'qwen3-max-2026-01-23';
-      }
+    console.log('服务器配置:', cfg);
+    
+    // 保存可用提供商列表
+    AVAILABLE_PROVIDERS = cfg.available_providers || [];
+    
+    // 保存服务器原始配置
+    SERVER_PROVIDERS = JSON.parse(JSON.stringify(cfg.providers || {}));
+    
+    // 加载各提供商配置（优先使用 localStorage 的覆盖）
+    for (const [name, providerCfg] of Object.entries(cfg.providers || {})) {
+      const localKey = localStorage.getItem(`${name}_api_key`);
+      const localUrl = localStorage.getItem(`${name}_base_url`);
+      const localEndpoint = localStorage.getItem(`${name}_endpoint`);
+      const localDeployment = localStorage.getItem(`${name}_deployment`);
       
-      // 保存到 localStorage 以便下次使用
-      localStorage.setItem('selProvider', selProvider);
-      localStorage.setItem('selModel', selModel);
-      
-      // 更新 UI
-      buildModelBar();
-      updateModelSelection();
+      PROVIDERS[name] = {
+        base_url: localUrl || localEndpoint || providerCfg.base_url || providerCfg.endpoint || '',
+        api_key: localKey || providerCfg.api_key || '',
+        models: providerCfg.models || [],
+        type: providerCfg.type || 'openai',
+        deployment: localDeployment || providerCfg.deployment || '',
+        api_version: providerCfg.api_version || '',
+      };
     }
     
-    // 如果服务器没有 API Key，提示用户输入
-    if (!cfg.has_api_key && !PROVIDERS[selProvider].api_key) {
-      console.log('服务器未配置 API Key，请在前端设置');
+    // 设置默认提供商和模型
+    if (cfg.default_provider && AVAILABLE_PROVIDERS.includes(cfg.default_provider)) {
+      selProvider = cfg.default_provider;
+      selModel = cfg.default_model || PROVIDERS[selProvider].models[0];
     }
+    
+    // 保存到 localStorage
+    localStorage.setItem('selProvider', selProvider);
+    localStorage.setItem('selModel', selModel);
+    
+    // 更新模型列表和 UI
+    updateModelList();
+    buildModelBar();
+    updateModelSelection();
+    
   } catch (e) {
-    console.log('加载服务器配置失败，使用默认配置');
+    console.error('加载服务器配置失败:', e);
+    // 使用默认配置
+    PROVIDERS = {
+      kimi: { base_url: 'https://api.moonshot.cn/v1', api_key: '', models: ['kimi-k2.5'] },
+    };
+    AVAILABLE_PROVIDERS = ['kimi'];
+  }
+}
+
+// 根据服务器配置更新 MODELS 常量
+function updateModelList() {
+  MODELS = {};
+  for (const name of AVAILABLE_PROVIDERS) {
+    const provider = PROVIDERS[name];
+    if (provider && provider.models) {
+      MODELS[name] = provider.models.map(m => ({ id: m, label: m.split('-').pop() }));
+    }
   }
 }
 
@@ -525,13 +537,31 @@ function send() {
   curRunId = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
 
   const prov = PROVIDERS[selProvider];
+  
+  // 构建请求参数
   const params = new URLSearchParams({
     q, rid: curRunId,
     h: JSON.stringify(history),
     model: selModel,
-    base_url: prov.base_url,
-    api_key: prov.api_key || '',
   });
+  
+  // 根据提供商类型设置不同的参数
+  if (prov.type === 'azure') {
+    // Azure 使用 endpoint 和 deployment
+    params.append('base_url', prov.base_url);  // 这是 endpoint
+    params.append('api_key', prov.api_key || '');
+    params.append('provider_type', 'azure');
+    // Azure 的 model 实际上是 deployment name
+    if (prov.deployment) {
+      params.set('model', prov.deployment);
+    }
+  } else {
+    // 标准 OpenAI 兼容格式 (Kimi, Qwen)
+    params.append('base_url', prov.base_url);
+    params.append('api_key', prov.api_key || '');
+    params.append('provider_type', 'openai');
+  }
+  
   es = new EventSource(`/run?${params}`);
   es.onmessage = e => handle(JSON.parse(e.data), q, sid);
   es.onerror = () => { es.close(); setRunning(false); };
@@ -1008,43 +1038,115 @@ cronStyles.textContent = `
 document.head.appendChild(cronStyles);
 
 // ===== API 设置功能 =====
+let SERVER_PROVIDERS = {};  // 服务器配置的提供商
+
 function toggleSettings() {
   const panel = document.getElementById('settingsPanel');
   panel.classList.toggle('show');
   
-  // 加载已保存的配置到输入框
+  // 动态生成设置面板
   if (panel.classList.contains('show')) {
-    document.getElementById('settingKimiKey').value = localStorage.getItem('kimi_api_key') || '';
-    document.getElementById('settingKimiUrl').value = localStorage.getItem('kimi_base_url') || '';
-    document.getElementById('settingQwenKey').value = localStorage.getItem('qwen_api_key') || '';
-    document.getElementById('settingQwenUrl').value = localStorage.getItem('qwen_base_url') || '';
+    renderSettingsPanel();
   }
 }
 
+function renderSettingsPanel() {
+  const content = document.getElementById('settingsContent');
+  
+  if (AVAILABLE_PROVIDERS.length === 0) {
+    content.innerHTML = '<div class="settings-loading">等待服务器配置...</div>';
+    return;
+  }
+  
+  let html = '';
+  
+  for (const name of AVAILABLE_PROVIDERS) {
+    const provider = PROVIDERS[name];
+    const displayName = name === 'kimi' ? 'Kimi (Moonshot)' : 
+                       name === 'qwen' ? '通义千问 (Qwen)' : 
+                       name === 'azure' ? 'Azure OpenAI' : name;
+    
+    const isAzure = provider.type === 'azure';
+    
+    html += `
+      <div class="settings-provider">
+        <h4>${displayName}</h4>
+        <div class="settings-group">
+          <label>API Key ${provider.api_key ? '✅ (已配置)' : ''}</label>
+          <input type="password" id="setting_${name}_key" 
+            placeholder="${provider.api_key ? '已配置，留空使用服务器配置' : '输入 API Key'}"
+            value="${localStorage.getItem(name + '_api_key') || ''}">
+        </div>
+        ${isAzure ? `
+        <div class="settings-group">
+          <label>Endpoint</label>
+          <input type="text" id="setting_${name}_endpoint" 
+            value="${localStorage.getItem(name + '_endpoint') || provider.base_url || ''}" 
+            placeholder="https://xxx.openai.azure.com">
+        </div>
+        <div class="settings-group">
+          <label>Deployment Name</label>
+          <input type="text" id="setting_${name}_deployment" 
+            value="${localStorage.getItem(name + '_deployment') || provider.deployment || ''}" 
+            placeholder="gpt-4o">
+        </div>
+        ` : `
+        <div class="settings-group">
+          <label>Base URL (可选)</label>
+          <input type="text" id="setting_${name}_url" 
+            value="${localStorage.getItem(name + '_base_url') || ''}" 
+            placeholder="${provider.base_url}">
+        </div>
+        `}
+      </div>
+    `;
+  }
+  
+  content.innerHTML = html;
+}
+
 function saveSettings() {
-  const kimiKey = document.getElementById('settingKimiKey').value.trim();
-  const kimiUrl = document.getElementById('settingKimiUrl').value.trim();
-  const qwenKey = document.getElementById('settingQwenKey').value.trim();
-  const qwenUrl = document.getElementById('settingQwenUrl').value.trim();
-  
-  // 保存到 localStorage
-  if (kimiKey) localStorage.setItem('kimi_api_key', kimiKey);
-  else localStorage.removeItem('kimi_api_key');
-  
-  if (kimiUrl) localStorage.setItem('kimi_base_url', kimiUrl);
-  else localStorage.removeItem('kimi_base_url');
-  
-  if (qwenKey) localStorage.setItem('qwen_api_key', qwenKey);
-  else localStorage.removeItem('qwen_api_key');
-  
-  if (qwenUrl) localStorage.setItem('qwen_base_url', qwenUrl);
-  else localStorage.removeItem('qwen_base_url');
-  
-  // 更新 PROVIDERS
-  PROVIDERS.kimi.api_key = kimiKey;
-  PROVIDERS.kimi.base_url = kimiUrl || 'https://api.moonshot.cn/v1';
-  PROVIDERS.qwen.api_key = qwenKey;
-  PROVIDERS.qwen.base_url = qwenUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  // 保存每个提供商的配置
+  for (const name of AVAILABLE_PROVIDERS) {
+    const provider = PROVIDERS[name];
+    const isAzure = provider.type === 'azure';
+    
+    // 保存 API Key
+    const keyInput = document.getElementById(`setting_${name}_key`);
+    if (keyInput) {
+      const key = keyInput.value.trim();
+      if (key) {
+        localStorage.setItem(`${name}_api_key`, key);
+        PROVIDERS[name].api_key = key;
+      } else {
+        localStorage.removeItem(`${name}_api_key`);
+        // 恢复服务器配置
+        PROVIDERS[name].api_key = SERVER_PROVIDERS[name]?.api_key || '';
+      }
+    }
+    
+    if (isAzure) {
+      // Azure 特殊配置
+      const endpointInput = document.getElementById(`setting_${name}_endpoint`);
+      if (endpointInput && endpointInput.value.trim()) {
+        localStorage.setItem(`${name}_endpoint`, endpointInput.value.trim());
+        PROVIDERS[name].base_url = endpointInput.value.trim();
+      }
+      
+      const deploymentInput = document.getElementById(`setting_${name}_deployment`);
+      if (deploymentInput && deploymentInput.value.trim()) {
+        localStorage.setItem(`${name}_deployment`, deploymentInput.value.trim());
+        PROVIDERS[name].deployment = deploymentInput.value.trim();
+      }
+    } else {
+      // 标准配置
+      const urlInput = document.getElementById(`setting_${name}_url`);
+      if (urlInput && urlInput.value.trim()) {
+        localStorage.setItem(`${name}_base_url`, urlInput.value.trim());
+        PROVIDERS[name].base_url = urlInput.value.trim();
+      }
+    }
+  }
   
   // 关闭面板
   document.getElementById('settingsPanel').classList.remove('show');

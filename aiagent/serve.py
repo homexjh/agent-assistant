@@ -48,12 +48,16 @@ class Handler(BaseHTTPRequestHandler):
             model    = qs.get("model",   [""])[0] or None
             base_url = qs.get("base_url",[""])[0] or None
             api_key  = qs.get("api_key", [""])[0] or None
+            provider_type = qs.get("provider_type", ["openai"])[0]
+            deployment = qs.get("deployment", [""])[0] or None
+            api_version = qs.get("api_version", [""])[0] or None
             try:
                 history = json.loads(history_raw)
             except Exception:
                 history = []
             self._serve_sse(run_id, query, history,
-                            model=model, base_url=base_url, api_key=api_key)
+                            model=model, base_url=base_url, api_key=api_key,
+                            provider_type=provider_type, deployment=deployment, api_version=api_version)
         elif path == "/stop":
             rid = qs.get("rid", [""])[0]
             with _active_lock:
@@ -233,14 +237,50 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_config(self):
         """返回服务器配置（从 .env 读取），供前端使用"""
+        
+        # 构建各提供商配置
+        providers = {}
+        
+        # Kimi 配置
+        kimi_key = os.getenv("KIMI_API_KEY", "")
+        if kimi_key:
+            providers["kimi"] = {
+                "base_url": os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
+                "api_key": kimi_key,
+                "models": os.getenv("KIMI_MODELS", "kimi-k2.5,kimi-k2-0711-preview").split(","),
+                "has_key": True,
+            }
+        
+        # Qwen 配置
+        qwen_key = os.getenv("QWEN_API_KEY", "")
+        if qwen_key:
+            providers["qwen"] = {
+                "base_url": os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                "api_key": qwen_key,
+                "models": os.getenv("QWEN_MODELS", "qwen3-max-2026-01-23,qwen3.5-plus").split(","),
+                "has_key": True,
+            }
+        
+        # Azure 配置
+        azure_key = os.getenv("AZURE_API_KEY", "")
+        if azure_key:
+            providers["azure"] = {
+                "endpoint": os.getenv("AZURE_ENDPOINT", ""),
+                "deployment": os.getenv("AZURE_DEPLOYMENT", "gpt-4o"),
+                "api_version": os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
+                "api_key": azure_key,
+                "models": os.getenv("AZURE_MODELS", "gpt-4o").split(","),
+                "has_key": True,
+                "type": "azure",  # 标记为 Azure 类型，需要特殊处理
+            }
+        
         config = {
-            "model": os.getenv("MODEL", "kimi-k2.5"),
-            "base_url": os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1"),
-            "api_key": os.getenv("OPENAI_API_KEY", ""),
-            # 不返回真实 key，前端需要用户自己输入
-            # 或者返回 masked key 提示用户已配置
-            "has_api_key": bool(os.getenv("OPENAI_API_KEY", "")),
+            "default_provider": os.getenv("DEFAULT_PROVIDER", "kimi"),
+            "default_model": os.getenv("DEFAULT_MODEL", "kimi-k2.5"),
+            "providers": providers,
+            "available_providers": list(providers.keys()),
         }
+        
         body = json.dumps(config).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -250,7 +290,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_sse(self, run_id: str, query: str, history: list,
-                   model=None, base_url=None, api_key=None):
+                   model=None, base_url=None, api_key=None,
+                   provider_type='openai', deployment=None, api_version=None):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -279,7 +320,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 loop.run_until_complete(
                     _run_agent(query, history, q, stop_event,
-                               model=model, base_url=base_url, api_key=api_key)
+                               model=model, base_url=base_url, api_key=api_key,
+                               provider_type=provider_type, deployment=deployment, api_version=api_version)
                 )
             except Exception as e:
                 q.put({"event": "error", "message": str(e)})
@@ -321,8 +363,15 @@ class Handler(BaseHTTPRequestHandler):
 
 async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                      stop_event: threading.Event,
-                     model=None, base_url=None, api_key=None):
-    """运行 Agent，把事件放入队列。stop_event 置位时立即中断。"""
+                     model=None, base_url=None, api_key=None,
+                     provider_type='openai', deployment=None, api_version=None):
+    """运行 Agent，把事件放入队列。stop_event 置位时立即中断。
+    
+    Args:
+        provider_type: 'openai' 或 'azure'
+        deployment: Azure deployment name
+        api_version: Azure API version
+    """
 
     def put(**kwargs):
         q.put(kwargs)
@@ -337,18 +386,31 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
         create_spawn_tool, create_subagents_tool,
         create_sessions_send_tool, create_agents_list_tool,
     )
-    from openai import AsyncOpenAI
 
     MAX_ROUNDS = 50
-    model    = model    or os.getenv("MODEL", "kimi-k2-0711-preview")
-    api_key  = api_key  or os.getenv("OPENAI_API_KEY", "")
-    base_url = base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+    
+    # 创建客户端
+    if provider_type == 'azure':
+        # Azure OpenAI 使用特殊客户端
+        from openai import AsyncAzureOpenAI
+        client = AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=base_url,  # Azure 使用 endpoint 不是 base_url
+            api_version=api_version or "2024-08-01-preview",
+        )
+        # Azure 使用 deployment name 而不是 model name
+        model = deployment or model
+    else:
+        # 标准 OpenAI 兼容客户端
+        from openai import AsyncOpenAI
+        model    = model    or os.getenv("MODEL", "kimi-k2.0711-preview")
+        api_key  = api_key  or os.getenv("OPENAI_API_KEY", "")
+        base_url = base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     session_id = str(uuid.uuid4())
     manager = SubagentManager(session_id=session_id)
-    # announce_queue 现在是 queue.Queue，不需要 bind_loop
 
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     system_prompt = build_system_prompt()
 
     def _agent_factory():
