@@ -271,6 +271,9 @@
         <div class="model-sep"></div>
         <span class="model-label">Qwen</span>
         <div id="mg-qwen" style="display:flex;gap:5px"></div>
+        <div class="model-sep" id="sep-azure" style="display:none"></div>
+        <span class="model-label" id="label-azure" style="display:none">Azure</span>
+        <div id="mg-azure" style="display:flex;gap:5px"></div>
       </div>
       <div class="inp-wrap">
         <textarea id="qi" placeholder="输入任务，Ctrl+Enter 发送..." rows="1"></textarea>
@@ -288,7 +291,7 @@
 
 <script>
 // ===== 模型配置 =====
-const MODELS = {
+let MODELS = {
   kimi: [
     { id: 'kimi-k2.5',            label: 'k2.5' },
     { id: 'kimi-k2-0711-preview', label: 'k2-preview' },
@@ -311,27 +314,29 @@ async function loadServerConfig() {
     const res = await fetch('/config');
     const cfg = await res.json();
     
-    console.log('服务器配置:', cfg);
-    
     // 保存可用提供商列表
     AVAILABLE_PROVIDERS = cfg.available_providers || [];
     
     // 保存服务器原始配置
     SERVER_PROVIDERS = JSON.parse(JSON.stringify(cfg.providers || {}));
     
-    // 加载各提供商配置（优先使用 localStorage 的覆盖）
+    // 加载各提供商配置（优先使用 localStorage 的覆盖，但忽略空字符串）
     for (const [name, providerCfg] of Object.entries(cfg.providers || {})) {
       const localKey = localStorage.getItem(`${name}_api_key`);
       const localUrl = localStorage.getItem(`${name}_base_url`);
       const localEndpoint = localStorage.getItem(`${name}_endpoint`);
       const localDeployment = localStorage.getItem(`${name}_deployment`);
       
+      // 使用 localStorage 值（如果不为空），否则使用服务器配置
+      const baseUrl = (localUrl && localUrl.trim()) || (localEndpoint && localEndpoint.trim()) || providerCfg.base_url || providerCfg.endpoint || '';
+      const apiKey = (localKey && localKey.trim()) || providerCfg.api_key || '';
+      
       PROVIDERS[name] = {
-        base_url: localUrl || localEndpoint || providerCfg.base_url || providerCfg.endpoint || '',
-        api_key: localKey || providerCfg.api_key || '',
+        base_url: baseUrl,
+        api_key: apiKey,
         models: providerCfg.models || [],
         type: providerCfg.type || 'openai',
-        deployment: localDeployment || providerCfg.deployment || '',
+        deployment: (localDeployment && localDeployment.trim()) || providerCfg.deployment || '',
         api_version: providerCfg.api_version || '',
       };
     }
@@ -349,7 +354,6 @@ async function loadServerConfig() {
     // 更新模型列表和 UI
     updateModelList();
     buildModelBar();
-    updateModelSelection();
     
   } catch (e) {
     console.error('加载服务器配置失败:', e);
@@ -367,7 +371,7 @@ function updateModelList() {
   for (const name of AVAILABLE_PROVIDERS) {
     const provider = PROVIDERS[name];
     if (provider && provider.models) {
-      MODELS[name] = provider.models.map(m => ({ id: m, label: m.split('-').pop() }));
+      MODELS[name] = provider.models.map(m => ({ id: m, label: m }));
     }
   }
 }
@@ -379,11 +383,24 @@ let selModel = localStorage.getItem('selModel') || 'kimi-k2.5';
 let selProvider = localStorage.getItem('selProvider') || 'kimi';
 
 function buildModelBar() {
-  ['kimi','qwen'].forEach(p => {
-    document.getElementById(`mg-${p}`).innerHTML = MODELS[p].map(m =>
+  // 使用 AVAILABLE_PROVIDERS 动态构建模型栏
+  AVAILABLE_PROVIDERS.forEach(p => {
+    const mg = document.getElementById(`mg-${p}`);
+    if (!mg) return; // 如果没有对应的容器，跳过
+    if (!MODELS[p]) return; // 如果没有模型列表，跳过
+    mg.innerHTML = MODELS[p].map(m =>
       `<button class="mc${m.id===selModel?' sel':''}" data-id="${m.id}" data-p="${p}"
         onclick="pickModel(this)">${m.label}</button>`
     ).join('');
+    mg.style.display = 'flex';
+    
+    // 显示 Azure 的标签和分隔符
+    if (p === 'azure') {
+      const sep = document.getElementById('sep-azure');
+      const label = document.getElementById('label-azure');
+      if (sep) sep.style.display = 'block';
+      if (label) label.style.display = 'inline';
+    }
   });
 }
 function pickModel(btn) {
@@ -538,6 +555,11 @@ function send() {
 
   const prov = PROVIDERS[selProvider];
   
+  // 调试：检查提供商配置
+  console.log(`[send] Provider: ${selProvider}, Model: ${selModel}`);
+  console.log(`[send] base_url: ${prov.base_url ? 'set' : 'NOT SET'}`);
+  console.log(`[send] api_key: ${prov.api_key ? 'set (length:' + prov.api_key.length + ')' : 'NOT SET'}`);
+  
   // 构建请求参数
   const params = new URLSearchParams({
     q, rid: curRunId,
@@ -562,9 +584,18 @@ function send() {
     params.append('provider_type', 'openai');
   }
   
+  console.log(`[send] Request URL: /run?${params.toString().substring(0, 100)}...`);
+  
   es = new EventSource(`/run?${params}`);
   es.onmessage = e => handle(JSON.parse(e.data), q, sid);
-  es.onerror = () => { es.close(); setRunning(false); };
+  es.onerror = (e) => { 
+    console.error('[send] EventSource error:', e);
+    es.close(); 
+    setRunning(false); 
+  };
+  es.onopen = () => {
+    console.log('[send] EventSource connected');
+  };
 }
 
 function handle(data, query, sid) {

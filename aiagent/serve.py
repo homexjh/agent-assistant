@@ -16,7 +16,14 @@ import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 
 from dotenv import load_dotenv
-load_dotenv()
+
+# 加载 .env 文件（从项目根目录）
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_env_path = os.path.join(_project_root, ".env")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+else:
+    load_dotenv()  #  fallback 到当前目录
 
 _HTML_PATH = os.path.join(os.path.dirname(__file__), "web_ui.html")
 
@@ -403,9 +410,14 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
     else:
         # 标准 OpenAI 兼容客户端
         from openai import AsyncOpenAI
-        model    = model    or os.getenv("MODEL", "kimi-k2.0711-preview")
-        api_key  = api_key  or os.getenv("OPENAI_API_KEY", "")
-        base_url = base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+        # 多提供商模式：使用传入的参数，仅当为 None 时才使用环境变量
+        model    = model if model is not None else os.getenv("MODEL", "kimi-k2.5")
+        api_key  = api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")
+        base_url = base_url if base_url is not None else os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+        if not api_key:
+            raise ValueError("api_key is required for non-Azure providers")
+        if not base_url:
+            raise ValueError("base_url is required for non-Azure providers")
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     session_id = str(uuid.uuid4())
