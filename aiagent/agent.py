@@ -127,10 +127,11 @@ class Agent:
 
         return await execute_tool(tool_call_id, name, arguments)
 
-    async def run(self, user_message: str, history: list[dict] | None = None) -> str:
+    async def run(self, user_message: str, history: list[dict] | None = None, images: list[dict] | None = None) -> str:
         """
         执行一次完整的 Agent 任务。
         history: 可传入上一轮对话以支持多轮。
+        images: 图片列表 [{"name": str, "mime": str, "data": base64_str}]
         返回最终 assistant 文本回复。
         """
         # 绑定当前事件循环，子线程 announce 时需要
@@ -139,7 +140,21 @@ class Agent:
         messages: list[dict] = [{"role": "system", "content": self.system_prompt}]
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": user_message})
+        
+        # 构造用户消息（支持多模态图片）
+        if images:
+            # OpenAI vision 格式
+            content = [{"type": "text", "text": user_message}]
+            for img in images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{img['mime']};base64,{img['data']}"
+                    }
+                })
+            messages.append({"role": "user", "content": content})
+        else:
+            messages.append({"role": "user", "content": user_message})
 
         for round_i in range(MAX_TOOL_ROUNDS):
 

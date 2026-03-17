@@ -101,9 +101,141 @@ class Handler(BaseHTTPRequestHandler):
         
         if path == "/cron":
             self._handle_cron_post(data)
+        elif path == "/run":
+            self._handle_run_post(data)
         else:
             self.send_response(404)
             self.end_headers()
+    
+    def _handle_run_post(self, data):
+        """处理 POST /run 请求（支持文件上传）"""
+        import base64
+        
+        query = data.get("q", "")
+        run_id = data.get("rid", str(uuid.uuid4()))
+        history_raw = data.get("h", "[]")
+        model = data.get("model") or None
+        base_url = data.get("base_url") or None
+        api_key = data.get("api_key") or None
+        provider_type = data.get("provider_type", "openai")
+        deployment = data.get("deployment") or None
+        api_version = data.get("api_version") or None
+        files = data.get("files", [])
+        
+        try:
+            history = json.loads(history_raw)
+        except:
+            history = []
+        
+        # 处理文件：将文件内容转换为文本描述
+        file_descriptions = []
+        images_for_vision = []
+        
+        for f in files:
+            file_name = f.get("name", "unknown")
+            file_type = f.get("type", "other")
+            file_mime = f.get("mime", "")
+            file_size = f.get("size", 0)
+            file_data = f.get("data")  # base64 for images
+            file_text = f.get("text")  # text content for code files
+            
+            if file_type == "image" and file_data:
+                # 图片：使用 Vision API 处理
+                images_for_vision.append({
+                    "name": file_name,
+                    "mime": file_mime,
+                    "data": file_data
+                })
+                file_descriptions.append(f"[图片: {file_name}]")
+                
+            elif file_type == "pdf":
+                # PDF：提取文本（简化处理，直接提示）
+                file_descriptions.append(f"[PDF文件: {file_name}, 大小: {file_size}字节]")
+                
+            elif file_type == "code" and file_text:
+                # 代码文件：直接包含内容
+                preview = file_text[:2000]  # 限制长度
+                if len(file_text) > 2000:
+                    preview += "\n... (内容已截断)"
+                file_descriptions.append(f"[文件: {file_name}]\n```\n{preview}\n```")
+                
+            else:
+                # 其他文件
+                file_descriptions.append(f"[文件: {file_name}, 类型: {file_mime}, 大小: {file_size}字节]")
+        
+        # 合并文件描述到查询
+        if file_descriptions:
+            enriched_query = query + "\n\n" + "\n\n".join(file_descriptions) if query else "\n\n".join(file_descriptions)
+        else:
+            enriched_query = query
+        
+        # 发送 SSE 响应
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
+        self._cors()
+        self.end_headers()
+        
+        def emit(event: str, **kwargs):
+            data = json.dumps({"event": event, **kwargs}, ensure_ascii=False)
+            try:
+                self.wfile.write(f"data: {data}\n\n".encode())
+                self.wfile.flush()
+            except Exception:
+                pass
+        
+        stop_event = threading.Event()
+        with _active_lock:
+            _active_runs[run_id] = stop_event
+        
+        q: _qmod.Queue[dict | None] = _qmod.Queue()
+        
+        def run_agent():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    _run_agent(enriched_query, history, q, stop_event,
+                               model=model, base_url=base_url, api_key=api_key,
+                               provider_type=provider_type, deployment=deployment, api_version=api_version,
+                               images=images_for_vision)
+                )
+            except Exception as e:
+                q.put({"event": "error", "message": str(e)})
+            finally:
+                try:
+                    pending = asyncio.all_tasks(loop)
+                    if pending:
+                        loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        )
+                except Exception:
+                    pass
+                loop.close()
+                q.put(None)
+        
+        t = threading.Thread(target=run_agent, daemon=True)
+        t.start()
+        
+        while True:
+            try:
+                item = q.get(timeout=300)
+            except _qmod.Empty:
+                emit("error", message="Agent timeout (300s no response).")
+                break
+            if item is None:
+                break
+            emit(**item)
+        
+        with _active_lock:
+            _active_runs.pop(run_id, None)
+        
+        try:
+            self.wfile.write(b'data: {"event":"end"}\n\n')
+            self.wfile.flush()
+        except Exception:
+            pass
     
     def _handle_cron_get(self, qs):
         """处理 GET /cron 请求"""
@@ -371,13 +503,15 @@ class Handler(BaseHTTPRequestHandler):
 async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                      stop_event: threading.Event,
                      model=None, base_url=None, api_key=None,
-                     provider_type='openai', deployment=None, api_version=None):
+                     provider_type='openai', deployment=None, api_version=None,
+                     images=None):
     """运行 Agent，把事件放入队列。stop_event 置位时立即中断。
     
     Args:
         provider_type: 'openai' 或 'azure'
         deployment: Azure deployment name
         api_version: Azure API version
+        images: 图片列表 [{"name": str, "mime": str, "data": base64_str}]
     """
 
     def put(**kwargs):
@@ -449,7 +583,20 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
-    messages.append({"role": "user", "content": query})
+    
+    # 构造用户消息（支持多模态图片）
+    if images:
+        content = [{"type": "text", "text": query}]
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{img['mime']};base64,{img['data']}"
+                }
+            })
+        messages.append({"role": "user", "content": content})
+    else:
+        messages.append({"role": "user", "content": query})
 
     put(event="start", model=model)
 

@@ -1,3 +1,4 @@
+
 # 多模态接入设计方案
 
 ## 一、OpenClaw多模态处理详细流程图
@@ -252,17 +253,17 @@
 
 ### 方案对比
 
-| 方案 | 复杂度 | 优点 | 缺点 | 适用场景 |
-|------|--------|------|------|----------|
-| **A: 预处理模式** (推荐) | 低 | 改动小，兼容性好 | 非真正多模态 | 快速落地 |
-| **B: 真多模态模式** | 中 | 原生支持，体验好 | 需要改动Agent | 长期演进 |
-| **C: 混合模式** | 高 | 兼顾两者 | 实现复杂 | 完整方案 |
+| 方案                           | 复杂度 | 优点             | 缺点          | 适用场景 |
+| ------------------------------ | ------ | ---------------- | ------------- | -------- |
+| **A: 预处理模式** (推荐) | 低     | 改动小，兼容性好 | 非真正多模态  | 快速落地 |
+| **B: 真多模态模式**      | 中     | 原生支持，体验好 | 需要改动Agent | 长期演进 |
+| **C: 混合模式**          | 高     | 兼顾两者         | 实现复杂      | 完整方案 |
 
 ---
 
 ### 方案A: 预处理模式 (推荐第一步)
 
-**核心思想**: 在消息进入Agent前，将图片/文件预处理成文本描述
+ **核心思想** : 在消息进入Agent前，将图片/文件预处理成文本描述
 
 ```
 用户上传图片
@@ -304,6 +305,7 @@
 #### 具体实现步骤
 
 **Step 1: Web上传组件** (Day 1)
+
 ```html
 <!-- web_ui.html 添加 -->
 <div class="input-area">
@@ -344,37 +346,38 @@ async function send() {
 ```
 
 **Step 2: 后端接收与处理** (Day 2-3)
+
 ```python
 # serve.py 修改
 async def _run_agent(query: str, files: List[UploadFile], ...):
     # 1. 处理上传的文件
     file_descriptions = []
-    
+  
     for file in files:
         content = await file.read()
         mime = file.content_type
-        
+      
         if mime.startswith('image/'):
             # 调用Vision模型
             description = await describe_image(content, mime)
             file_descriptions.append(f"[图片 {file.filename}]: {description}")
-            
+          
         elif mime == 'application/pdf':
             # 提取PDF文本
             text = extract_pdf_text(content)
             file_descriptions.append(f"[PDF {file.filename}]: {text[:2000]}...")
-            
+          
         elif mime.startswith('text/') or file.filename.endswith('.py'):
             # 文本文件直接读取
             text = content.decode('utf-8')
             file_descriptions.append(f"[文件 {file.filename}]:\n```\n{text[:3000]}\n```")
-    
+  
     # 2. 合并到用户消息
     if file_descriptions:
         enriched_query = query + "\n\n" + "\n\n".join(file_descriptions)
     else:
         enriched_query = query
-    
+  
     # 3. 原有Agent流程
     agent = Agent()
     async for event in agent.run_stream(enriched_query):
@@ -382,16 +385,17 @@ async def _run_agent(query: str, files: List[UploadFile], ...):
 ```
 
 **Step 3: Vision工具封装** (Day 3)
+
 ```python
 # tools/vision.py (新增)
 import base64
 
 async def describe_image(image_data: bytes, mime_type: str) -> str:
     """调用Vision模型描述图片"""
-    
+  
     # Base64编码
     base64_image = base64.b64encode(image_data).decode()
-    
+  
     # 调用LLM Vision API
     client = AsyncOpenAI(...)
     response = await client.chat.completions.create(
@@ -412,11 +416,12 @@ async def describe_image(image_data: bytes, mime_type: str) -> str:
         ],
         max_tokens=1000
     )
-    
+  
     return response.choices[0].message.content
 ```
 
 **Step 4: CLI支持** (Day 4)
+
 ```python
 # main.py 添加
 import argparse
@@ -426,38 +431,40 @@ def main():
     parser.add_argument('--image', action='append', help='图片路径')
     parser.add_argument('--file', action='append', help='文件路径')
     args = parser.parse_args()
-    
+  
     # 预加载文件描述
     descriptions = []
-    
+  
     if args.image:
         for img_path in args.image:
             with open(img_path, 'rb') as f:
                 desc = asyncio.run(describe_image(f.read(), 'image/jpeg'))
                 descriptions.append(f"[图片 {img_path}]: {desc}")
-    
+  
     # 合并到第一条消息
     initial_context = "\n\n".join(descriptions) if descriptions else None
-    
+  
     # 启动对话
     chat_loop(initial_context=initial_context)
 ```
 
-**优点**:
-- Agent核心完全不用改
-- 兼容所有现有功能
-- 实现简单，1周内完成
+ **优点** :
 
-**缺点**:
-- 不是真正的多模态(Agent看不到原始图片)
-- 图片描述可能丢失细节
-- 无法让用户在对话中指着图片某处问问题
+* Agent核心完全不用改
+* 兼容所有现有功能
+* 实现简单，1周内完成
+
+ **缺点** :
+
+* 不是真正的多模态(Agent看不到原始图片)
+* 图片描述可能丢失细节
+* 无法让用户在对话中指着图片某处问问题
 
 ---
 
 ### 方案B: 真多模态模式 (长期演进)
 
-**核心思想**: 改造Agent支持OpenAI标准的多模态消息格式
+ **核心思想** : 改造Agent支持OpenAI标准的多模态消息格式
 
 ```
 用户上传图片
@@ -486,6 +493,7 @@ def main():
 #### 改造点
 
 **1. 消息格式改造** (agent.py)
+
 ```python
 # 当前: content只能是字符串
 Message = {"role": "user", "content": "文本"}
@@ -501,14 +509,15 @@ Message = {
 ```
 
 **2. Agent.run改造**
+
 ```python
 class Agent:
     async def run(self, user_message, attachments=None):
         messages = []
-        
+      
         # 构建多模态消息
         content = [{"type": "text", "text": user_message}]
-        
+      
         if attachments:
             for att in attachments:
                 if att['type'] == 'image':
@@ -516,14 +525,15 @@ class Agent:
                         "type": "image_url",
                         "image_url": {"url": f"data:{att['mime']};base64,{att['data']}"}
                     })
-        
+      
         messages.append({"role": "user", "content": content})
-        
+      
         # 原有Tool-Use循环
         ...
 ```
 
 **3. 存储改造** (历史记录)
+
 ```python
 # 多模态消息需要特殊存储
 {
@@ -534,37 +544,39 @@ class Agent:
 }
 ```
 
-**优点**:
-- 真正的多模态体验
-- Agent可以看到原始图片
-- 支持更复杂的交互(指着某处问问题)
+ **优点** :
 
-**缺点**:
-- 需要改Agent核心
-- 历史记录格式要变
-- 测试工作量大
+* 真正的多模态体验
+* Agent可以看到原始图片
+* 支持更复杂的交互(指着某处问问题)
+
+ **缺点** :
+
+* 需要改Agent核心
+* 历史记录格式要变
+* 测试工作量大
 
 ---
 
 ### 方案C: 混合模式 (最终形态)
 
 结合A和B的优点:
-- 简单场景用方案A(快速)
-- 复杂场景用方案B(精准)
 
-```python
-async def handle_user_input(text, files):
-    # 判断文件大小和类型
-    total_size = sum(len(f['data']) for f in files)
-    
-    if total_size < 100KB and len(files) <= 2:
-        # 小文件：直接用真多模态
-        return await agent.run_with_multimodal(text, files)
-    else:
-        # 大文件：预处理后发送
-        descriptions = await preprocess_files(files)
-        return await agent.run(text + descriptions)
-```
+* 简单场景用方案A(快速)
+* 复杂场景用方案B(精准)
+  ```python
+  async def handle_user_input(text, files):
+  # 判断文件大小和类型
+  total_size = sum(len(f['data']) for f in files)
+
+  if total_size < 100KB and len(files) <= 2:
+      # 小文件：直接用真多模态
+      return await agent.run_with_multimodal(text, files)
+  else:
+      # 大文件：预处理后发送
+      descriptions = await preprocess_files(files)
+      return await agent.run(text + descriptions)
+  ```
 
 ---
 
@@ -593,16 +605,19 @@ Week 3+: (可选) 方案B改造
 ## 四、关键决策点
 
 **Q1: 是否必须真多模态？**
-- 如果主要用例是"总结图片内容" → 方案A足够
-- 如果需要用例是"图片里第三行代码什么意思" → 需要方案B
+
+* 如果主要用例是"总结图片内容" → 方案A足够
+* 如果需要用例是"图片里第三行代码什么意思" → 需要方案B
 
 **Q2: 图片存储在哪？**
-- 临时方案: 内存/临时文件(重启丢失)
-- 长期方案: 本地存储 + 定期清理
+
+* 临时方案: 内存/临时文件(重启丢失)
+* 长期方案: 本地存储 + 定期清理
 
 **Q3: 大图片怎么处理？**
-- 压缩: PIL/Pillow调整尺寸
-- 分块: 大图切分多次分析
-- 限制: 拒绝超大文件(>10MB)
 
-**推荐**: 先做方案A快速落地，验证需求后再考虑方案B。
+* 压缩: PIL/Pillow调整尺寸
+* 分块: 大图切分多次分析
+* 限制: 拒绝超大文件(>10MB)
+
+ **推荐** : 先做方案A快速落地，验证需求后再考虑方案B。
