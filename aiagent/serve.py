@@ -110,6 +110,7 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_run_post(self, data):
         """处理 POST /run 请求（支持文件上传）"""
         import base64
+        import tempfile
         
         query = data.get("q", "")
         run_id = data.get("rid", str(uuid.uuid4()))
@@ -127,9 +128,14 @@ class Handler(BaseHTTPRequestHandler):
         except:
             history = []
         
-        # 处理文件：将文件内容转换为文本描述
+        # 创建临时目录保存上传的文件
+        upload_dir = os.path.join(tempfile.gettempdir(), f"aiagent_uploads_{run_id}")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # 处理文件：保存到磁盘并生成描述
         file_descriptions = []
         images_for_vision = []
+        saved_files = []  # 记录保存的文件路径，用于清理
         
         for f in files:
             file_name = f.get("name", "unknown")
@@ -139,29 +145,69 @@ class Handler(BaseHTTPRequestHandler):
             file_data = f.get("data")  # base64 for images
             file_text = f.get("text")  # text content for code files
             
+            # 安全化文件名
+            safe_name = "".join(c for c in file_name if c.isalnum() or c in "._-").rstrip()
+            if not safe_name:
+                safe_name = "unnamed_file"
+            file_path = os.path.join(upload_dir, safe_name)
+            
             if file_type == "image" and file_data:
-                # 图片：使用 Vision API 处理
-                images_for_vision.append({
-                    "name": file_name,
-                    "mime": file_mime,
-                    "data": file_data
-                })
-                file_descriptions.append(f"[图片: {file_name}]")
+                # 图片：保存到磁盘 + Vision API 处理
+                try:
+                    with open(file_path, "wb") as fp:
+                        fp.write(base64.b64decode(file_data))
+                    saved_files.append(file_path)
+                    
+                    images_for_vision.append({
+                        "name": file_name,
+                        "mime": file_mime,
+                        "data": file_data
+                    })
+                    file_descriptions.append(f"[图片: {file_name} (已保存到: {file_path})]")
+                except Exception as e:
+                    file_descriptions.append(f"[图片: {file_name} (保存失败: {e})]")
                 
             elif file_type == "pdf":
-                # PDF：提取文本（简化处理，直接提示）
-                file_descriptions.append(f"[PDF文件: {file_name}, 大小: {file_size}字节]")
+                # PDF：保存到磁盘，方便 pdf 工具读取
+                try:
+                    # PDF 数据需要从 base64 解码（如果前端传了数据）
+                    if file_data:
+                        with open(file_path, "wb") as fp:
+                            fp.write(base64.b64decode(file_data))
+                    else:
+                        # 如果没有数据，创建一个标记文件
+                        file_path = os.path.join(upload_dir, safe_name)
+                    saved_files.append(file_path)
+                    file_descriptions.append(f"[PDF文件: {file_name} (路径: {file_path})]")
+                except Exception as e:
+                    file_descriptions.append(f"[PDF文件: {file_name} (保存失败: {e})]")
                 
             elif file_type == "code" and file_text:
-                # 代码文件：直接包含内容
-                preview = file_text[:2000]  # 限制长度
-                if len(file_text) > 2000:
-                    preview += "\n... (内容已截断)"
-                file_descriptions.append(f"[文件: {file_name}]\n```\n{preview}\n```")
-                
+                # 代码文件：保存到磁盘 + 内容预览
+                try:
+                    with open(file_path, "w", encoding="utf-8") as fp:
+                        fp.write(file_text)
+                    saved_files.append(file_path)
+                    
+                    preview = file_text[:2000]
+                    if len(file_text) > 2000:
+                        preview += "\n... (内容已截断)"
+                    file_descriptions.append(f"[文件: {file_name} (路径: {file_path})]\n```\n{preview}\n```")
+                except Exception as e:
+                    file_descriptions.append(f"[文件: {file_name} (保存失败: {e})]")
+                    
             else:
-                # 其他文件
-                file_descriptions.append(f"[文件: {file_name}, 类型: {file_mime}, 大小: {file_size}字节]")
+                # 其他文件：尝试保存
+                if file_data:
+                    try:
+                        with open(file_path, "wb") as fp:
+                            fp.write(base64.b64decode(file_data))
+                        saved_files.append(file_path)
+                        file_descriptions.append(f"[文件: {file_name}, 类型: {file_mime}, 大小: {file_size}字节 (路径: {file_path})]")
+                    except Exception as e:
+                        file_descriptions.append(f"[文件: {file_name} (保存失败: {e})]")
+                else:
+                    file_descriptions.append(f"[文件: {file_name}, 类型: {file_mime}, 大小: {file_size}字节]")
         
         # 合并文件描述到查询
         if file_descriptions:

@@ -449,10 +449,23 @@ async function addFile(file) {
       // 图片转 base64
       fileInfo.base64 = await readFileAsBase64(file);
       fileInfo.preview = URL.createObjectURL(file);
-    } else {
-      // 文本文件读取内容
-      if (file.size < 1024 * 1024) { // 小于1MB的文本文件才读取
+    } else if (fileType === 'pdf') {
+      // PDF 转 base64（供后端保存）
+      if (file.size < 10 * 1024 * 1024) { // 小于 10MB 的 PDF
+        fileInfo.base64 = await readFileAsBase64(file);
+      }
+    } else if (fileType === 'code') {
+      // 文本文件读取内容 + base64（供后端保存）
+      if (file.size < 1024 * 1024) { // 小于1MB才读取文本
         fileInfo.text = await readFileAsText(file);
+      }
+      if (file.size < 10 * 1024 * 1024) { // 小于10MB保存文件
+        fileInfo.base64 = await readFileAsBase64(file);
+      }
+    } else {
+      // 其他文件：转 base64（供后端保存）
+      if (file.size < 10 * 1024 * 1024) { // 小于 10MB
+        fileInfo.base64 = await readFileAsBase64(file);
       }
     }
     
