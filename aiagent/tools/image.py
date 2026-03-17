@@ -69,6 +69,7 @@ async def _image_handler(
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
     model = os.getenv("MODEL", "kimi-k2-0711-preview")
     is_moonshot = "moonshot" in base_url or "kimi" in base_url.lower()
+    is_qwen = "dashscope" in base_url.lower() or "qwen" in model.lower()
 
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
@@ -104,7 +105,7 @@ async def _image_handler(
                     "image_url": {"url": f"data:{mime};base64,{data_part}"},
                 })
         elif url_or_data.startswith("data:"):
-            # 标准 OpenAI base64
+            # 标准 OpenAI base64（Qwen/Azure/OpenAI 都支持）
             data_part = url_or_data.split(",", 1)[1]
             content.append({
                 "type": "image_url",
