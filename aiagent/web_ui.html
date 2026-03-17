@@ -309,18 +309,59 @@ const MODELS = {
     { id: 'qwen3-coder-plus',     label: 'coder-plus' },
   ],
 };
-// 从 localStorage 读取用户自己的 API 配置
-// 每个人可以在浏览器中设置自己的 API Key
+// 默认配置（会从服务器 /config API 加载）
 const PROVIDERS = {
   kimi: { 
-    base_url: localStorage.getItem('kimi_base_url') || 'https://api.moonshot.cn/v1', 
-    api_key: localStorage.getItem('kimi_api_key') || '' 
+    base_url: 'https://api.moonshot.cn/v1', 
+    api_key: '' 
   },
   qwen: { 
-    base_url: localStorage.getItem('qwen_base_url') || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    api_key: localStorage.getItem('qwen_api_key') || '' 
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    api_key: '' 
   },
 };
+
+// 从服务器加载配置（.env 中的配置）
+async function loadServerConfig() {
+  try {
+    const res = await fetch('/config');
+    const cfg = await res.json();
+    
+    // 如果服务器配置了 base_url，使用服务器的
+    if (cfg.base_url) {
+      // 根据 base_url 判断 provider
+      if (cfg.base_url.includes('moonshot')) {
+        PROVIDERS.kimi.base_url = cfg.base_url;
+        PROVIDERS.kimi.api_key = cfg.api_key || localStorage.getItem('kimi_api_key') || '';
+        selProvider = 'kimi';
+        selModel = cfg.model || 'kimi-k2.5';
+      } else if (cfg.base_url.includes('aliyun') || cfg.base_url.includes('dashscope')) {
+        PROVIDERS.qwen.base_url = cfg.base_url;
+        PROVIDERS.qwen.api_key = cfg.api_key || localStorage.getItem('qwen_api_key') || '';
+        selProvider = 'qwen';
+        selModel = cfg.model || 'qwen3-max-2026-01-23';
+      }
+      
+      // 保存到 localStorage 以便下次使用
+      localStorage.setItem('selProvider', selProvider);
+      localStorage.setItem('selModel', selModel);
+      
+      // 更新 UI
+      buildModelBar();
+      updateModelSelection();
+    }
+    
+    // 如果服务器没有 API Key，提示用户输入
+    if (!cfg.has_api_key && !PROVIDERS[selProvider].api_key) {
+      console.log('服务器未配置 API Key，请在前端设置');
+    }
+  } catch (e) {
+    console.log('加载服务器配置失败，使用默认配置');
+  }
+}
+
+// 启动时加载配置
+loadServerConfig();
 
 let selModel = localStorage.getItem('selModel') || 'kimi-k2.5';
 let selProvider = localStorage.getItem('selProvider') || 'kimi';

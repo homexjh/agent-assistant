@@ -69,6 +69,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_cron_get(qs)
         elif path == "/cron/logs":
             self._handle_cron_logs()
+        elif path == "/config":
+            self._serve_config()
         else:
             self.send_response(404)
             self.end_headers()
@@ -224,6 +226,24 @@ class Handler(BaseHTTPRequestHandler):
             body = f.read()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_config(self):
+        """返回服务器配置（从 .env 读取），供前端使用"""
+        config = {
+            "model": os.getenv("MODEL", "kimi-k2.5"),
+            "base_url": os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1"),
+            "api_key": os.getenv("OPENAI_API_KEY", ""),
+            # 不返回真实 key，前端需要用户自己输入
+            # 或者返回 masked key 提示用户已配置
+            "has_api_key": bool(os.getenv("OPENAI_API_KEY", "")),
+        }
+        body = json.dumps(config).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self._cors()
         self.end_headers()
