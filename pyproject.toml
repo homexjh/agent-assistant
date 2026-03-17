@@ -1,0 +1,27 @@
+[project]
+name = "aiagent"
+version = "0.1.0"
+description = "A minimal AI Agent with tool-use loop"
+requires-python = ">=3.11"
+dependencies = [
+    "nano-pdf>=0.2.1",
+    "openai>=1.30.0",
+    "pdfminer-six>=20260107",
+    "playwright>=1.58.0",
+    "python-dotenv>=1.0.0",
+    "reportlab>=4.4.10",
+]
+
+[project.optional-dependencies]
+# 按需安装：uv add pdfminer.six playwright croniter
+pdf = ["pdfminer.six>=20221105"]
+browser = ["playwright>=1.40.0"]
+cron = ["croniter>=2.0.0"]
+all = ["pdfminer.six>=20221105", "playwright>=1.40.0", "croniter>=2.0.0"]
+
+[project.scripts]
+aiagent = "aiagent.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

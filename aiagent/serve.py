@@ -1,0 +1,509 @@
+"""
+serve.py - Agent 可视化服务（纯标准库，无第三方依赖）
+
+启动：uv run python -m aiagent.serve
+访问：http://localhost:8765
+"""
+from __future__ import annotations
+import asyncio
+import inspect
+import json
+import os
+import queue as _qmod
+import threading
+import urllib.parse
+import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+
+from dotenv import load_dotenv
+load_dotenv()
+
+_HTML_PATH = os.path.join(os.path.dirname(__file__), "web_ui.html")
+
+# run_id -> stop_event，供前端 /stop 调用
+_active_runs: dict[str, threading.Event] = {}
+_active_lock = threading.Lock()
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        pass  # 静音默认日志
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        qs = urllib.parse.parse_qs(parsed.query)
+
+        if path == "/":
+            self._serve_html()
+        elif path == "/run":
+            query    = qs.get("q",       [""])[0]
+            run_id   = qs.get("rid",     [str(uuid.uuid4())])[0]
+            history_raw = qs.get("h",    ["[]"])[0]
+            model    = qs.get("model",   [""])[0] or None
+            base_url = qs.get("base_url",[""])[0] or None
+            api_key  = qs.get("api_key", [""])[0] or None
+            try:
+                history = json.loads(history_raw)
+            except Exception:
+                history = []
+            self._serve_sse(run_id, query, history,
+                            model=model, base_url=base_url, api_key=api_key)
+        elif path == "/stop":
+            rid = qs.get("rid", [""])[0]
+            with _active_lock:
+                ev = _active_runs.get(rid)
+            if ev:
+                ev.set()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._cors()
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+        elif path == "/cron":
+            self._handle_cron_get(qs)
+        elif path == "/cron/logs":
+            self._handle_cron_logs()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        
+        # 读取请求体
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8')
+        
+        try:
+            data = json.loads(body) if body else {}
+        except:
+            data = {}
+        
+        if path == "/cron":
+            self._handle_cron_post(data)
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def _handle_cron_get(self, qs):
+        """处理 GET /cron 请求"""
+        from .tools.cron import _jobs
+        import time
+        
+        action = qs.get("action", ["list"])[0]
+        
+        if action == "list":
+            jobs = []
+            for job_id, job in _jobs.items():
+                jobs.append({
+                    "id": job_id,
+                    "name": job.get("name", ""),
+                    "schedule": job.get("schedule", {}),
+                    "enabled": job.get("enabled", True),
+                    "run_count": job.get("run_count", 0),
+                    "last_run": job.get("last_run"),
+                    "next_run": job.get("next_run")
+                })
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({"jobs": jobs}).encode())
+        else:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self._cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Unknown action"}).encode())
+    
+    def _handle_cron_logs(self):
+        """处理 GET /cron/logs 请求"""
+        from .tools.cron import get_logs, get_running_agents
+        
+        logs = get_logs()
+        running = get_running_agents()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self._cors()
+        self.end_headers()
+        self.wfile.write(json.dumps({"logs": logs, "running": list(running.keys())}).encode())
+    
+    def _handle_cron_post(self, data):
+        """处理 POST /cron 请求"""
+        from .tools.cron import _jobs, _lock, _persist, _parse_schedule, _run_job, _ensure_scheduler
+        import time
+        
+        action = data.get("action", "")
+        result = {"status": "error", "error": "Unknown action"}
+        
+        if action == "list":
+            jobs = []
+            for job_id, job in _jobs.items():
+                jobs.append({
+                    "id": job_id,
+                    "name": job.get("name", ""),
+                    "schedule": job.get("schedule", {}),
+                    "enabled": job.get("enabled", True),
+                    "run_count": job.get("run_count", 0)
+                })
+            result = {"status": "ok", "jobs": jobs}
+        
+        elif action == "add":
+            name = data.get("name", "")
+            schedule = data.get("schedule", {})
+            payload = data.get("payload", {})
+            
+            if not name or not schedule or not payload:
+                result = {"status": "error", "error": "Missing required fields"}
+            else:
+                _ensure_scheduler()
+                job_id = str(uuid.uuid4())[:8]
+                now = time.time()
+                next_run = _parse_schedule(schedule, now)
+                
+                job = {
+                    "id": job_id,
+                    "name": name,
+                    "schedule": schedule,
+                    "payload": payload,
+                    "enabled": True,
+                    "next_run": next_run,
+                    "run_count": 0,
+                    "created_at": now
+                }
+                
+                with _lock:
+                    _jobs[job_id] = job
+                _persist()
+                result = {"status": "ok", "job_id": job_id}
+        
+        elif action == "remove":
+            job_id = data.get("job_id", "")
+            if job_id:
+                with _lock:
+                    if job_id in _jobs:
+                        del _jobs[job_id]
+                _persist()
+                result = {"status": "ok"}
+            else:
+                result = {"status": "error", "error": "job_id required"}
+        
+        elif action == "run":
+            job_id = data.get("job_id", "")
+            if job_id:
+                with _lock:
+                    job = _jobs.get(job_id)
+                if job:
+                    _run_job(job)
+                    result = {"status": "ok"}
+                else:
+                    result = {"status": "error", "error": "Job not found"}
+            else:
+                result = {"status": "error", "error": "job_id required"}
+        
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self._cors()
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "*")
+
+    def _serve_html(self):
+        with open(_HTML_PATH, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_sse(self, run_id: str, query: str, history: list,
+                   model=None, base_url=None, api_key=None):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
+        self._cors()
+        self.end_headers()
+
+        def emit(event: str, **kwargs):
+            data = json.dumps({"event": event, **kwargs}, ensure_ascii=False)
+            try:
+                self.wfile.write(f"data: {data}\n\n".encode())
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        stop_event = threading.Event()
+        with _active_lock:
+            _active_runs[run_id] = stop_event
+
+        q: _qmod.Queue[dict | None] = _qmod.Queue()
+
+        def run_agent():
+            # 每次请求独立的 event loop，不共享，不复用
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    _run_agent(query, history, q, stop_event,
+                               model=model, base_url=base_url, api_key=api_key)
+                )
+            except Exception as e:
+                q.put({"event": "error", "message": str(e)})
+            finally:
+                # 等待所有 pending tasks 完成再关闭，避免 "Event loop is closed" 警告
+                try:
+                    pending = asyncio.all_tasks(loop)
+                    if pending:
+                        loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        )
+                except Exception:
+                    pass
+                loop.close()
+                q.put(None)  # 通知主线程结束
+
+        t = threading.Thread(target=run_agent, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                item = q.get(timeout=300)  # 超时保护：5分钟（浏览器操作可能需要较长时间）
+            except _qmod.Empty:
+                emit("error", message="Agent timeout (300s no response). Task may be too complex. Try breaking it into smaller subtasks.")
+                break
+            if item is None:
+                break
+            emit(**item)
+
+        with _active_lock:
+            _active_runs.pop(run_id, None)
+
+        try:
+            self.wfile.write(b'data: {"event":"end"}\n\n')
+            self.wfile.flush()
+        except Exception:
+            pass
+
+
+async def _run_agent(query: str, history: list, q: "_qmod.Queue",
+                     stop_event: threading.Event,
+                     model=None, base_url=None, api_key=None):
+    """运行 Agent，把事件放入队列。stop_event 置位时立即中断。"""
+
+    def put(**kwargs):
+        q.put(kwargs)
+
+    def stopped() -> bool:
+        return stop_event.is_set()
+
+    from .tools import get_tool_definitions, execute_tool
+    from .workspace import build_system_prompt
+    from .subagent import SubagentManager
+    from .subagent_tools import (
+        create_spawn_tool, create_subagents_tool,
+        create_sessions_send_tool, create_agents_list_tool,
+    )
+    from openai import AsyncOpenAI
+
+    MAX_ROUNDS = 50
+    model    = model    or os.getenv("MODEL", "kimi-k2-0711-preview")
+    api_key  = api_key  or os.getenv("OPENAI_API_KEY", "")
+    base_url = base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
+
+    session_id = str(uuid.uuid4())
+    manager = SubagentManager(session_id=session_id)
+    # announce_queue 现在是 queue.Queue，不需要 bind_loop
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    system_prompt = build_system_prompt()
+
+    def _agent_factory():
+        from .agent import Agent
+        return Agent(model=model, api_key=api_key, base_url=base_url, depth=1)
+
+    spawn_tool = create_spawn_tool(session_id, manager, _agent_factory, depth=0)
+    sub_tool   = create_subagents_tool(session_id, manager)
+    send_tool  = create_sessions_send_tool(session_id, manager)
+    list_tool  = create_agents_list_tool(manager)
+
+    extra_tools = {
+        spawn_tool.name: spawn_tool,
+        sub_tool.name:   sub_tool,
+        send_tool.name:  send_tool,
+        list_tool.name:  list_tool,
+    }
+    tools = (
+        get_tool_definitions()
+        + [spawn_tool.definition, sub_tool.definition,
+           send_tool.definition,  list_tool.definition]
+    )
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": query})
+
+    put(event="start", model=model)
+
+    async def exec_tool(tc_id, name, arguments):
+        extra = extra_tools.get(name)
+        if extra:
+            try:
+                kwargs = json.loads(arguments)
+            except Exception as e:
+                return {"role": "tool", "tool_call_id": tc_id,
+                        "content": f"Error parsing args: {e}"}
+            try:
+                if inspect.iscoroutinefunction(extra.handler):
+                    content = await extra.handler(**kwargs)
+                else:
+                    content = extra.handler(**kwargs)
+            except Exception as e:
+                content = f"Error: {e}"
+            return {"role": "tool", "tool_call_id": tc_id, "content": str(content)}
+        return await execute_tool(tc_id, name, arguments)
+
+    for round_i in range(MAX_ROUNDS):
+        if stopped():
+            put(event="stopped")
+            return
+
+        put(event="thinking", round=round_i + 1)
+
+        try:
+            resp = await client.chat.completions.create(
+                model=model, messages=messages,
+                tools=tools, tool_choice="auto",  # type: ignore
+            )
+        except Exception as e:
+            put(event="error", message=str(e))
+            return
+
+        if stopped():
+            put(event="stopped")
+            return
+
+        msg = resp.choices[0].message
+        messages.append(msg.model_dump(exclude_unset=False))
+
+        # reasoning
+        raw = msg.model_dump(exclude_unset=False)
+        reasoning = raw.get("reasoning_content") or raw.get("thinking")
+        if reasoning:
+            put(event="reasoning", round=round_i + 1, content=reasoning)
+
+        # 工具调用
+        if msg.tool_calls:
+            calls = []
+            for tc in msg.tool_calls:
+                try:
+                    args_obj = json.loads(tc.function.arguments)
+                except Exception:
+                    args_obj = tc.function.arguments
+                calls.append({"id": tc.id, "name": tc.function.name, "args": args_obj})
+            put(event="tool_calls", round=round_i + 1, calls=calls)
+
+            results = await asyncio.gather(*[
+                exec_tool(tc.id, tc.function.name, tc.function.arguments)
+                for tc in msg.tool_calls
+            ])
+
+            for tc, result in zip(msg.tool_calls, results):
+                content = result["content"]
+                img = None
+                # 处理浏览器截图 - 支持多种格式
+                if tc.function.name == "browser" and isinstance(content, str):
+                    # 优先匹配 📸 Screenshot: 格式（自动截图）
+                    if "📸 Screenshot:" in content:
+                        path = content.split("📸 Screenshot:")[-1].strip().split("\n")[0]
+                        img = _img_b64(path)
+                    # 也支持旧的 Screenshot saved to: 格式
+                    elif "Screenshot saved to:" in content:
+                        path = content.split("Screenshot saved to:")[-1].strip()
+                        img = _img_b64(path)
+                put(event="tool_result", round=round_i + 1,
+                    tool_id=tc.id, name=tc.function.name,
+                    content=content[:2000], image=img)
+
+            messages.extend(results)
+            continue
+
+        # announce 队列（子 Agent 结果）
+        # 首先尝试非阻塞获取，如果没有但有活跃子Agent，则等待
+        ann_msg = None
+        try:
+            ann_msg = manager.announce_queue.get_nowait()
+        except Exception:
+            pass
+        
+        # 如果没有announce消息但有活跃子Agent，等待它们完成
+        if ann_msg is None and manager.count_active() > 0:
+            put(event="waiting_subagents", 
+                active=manager.count_active(),
+                message=f"等待 {manager.count_active()} 个子Agent完成...")
+            # 最多等待30秒，每0.5秒检查一次
+            for _ in range(60):
+                if stopped():
+                    put(event="stopped")
+                    return
+                await asyncio.sleep(0.5)
+                try:
+                    ann_msg = manager.announce_queue.get_nowait()
+                    break  # 获取到消息，跳出等待
+                except Exception:
+                    pass
+                # 如果所有子Agent都结束了但还是没消息，也退出等待
+                if manager.count_active() == 0:
+                    break
+        
+        if ann_msg:
+            put(event="subagent_announce",
+                round=round_i + 1,
+                content=str(ann_msg.get("content", ""))[:500])
+            messages.append(ann_msg)
+            continue
+
+        # 完成
+        put(event="done", content=msg.content or "")
+        return
+
+    put(event="done", content="[max tool rounds reached]")
+
+
+def _img_b64(path: str) -> str | None:
+    import base64
+    try:
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        ext = path.rsplit(".", 1)[-1].lower()
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, "image/png")
+        return f"data:{mime};base64,{data}"
+    except Exception:
+        return None
+
+
+def main():
+    port = 8765
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    server.socket.setsockopt(__import__("socket").SOL_SOCKET,
+                             __import__("socket").SO_REUSEADDR, 1)
+    print(f"AIAgent 可视化服务: http://localhost:{port}")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
