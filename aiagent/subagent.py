@@ -37,13 +37,24 @@ class SubagentManager:
         """兼容旧接口，现在不需要绑定 loop。"""
         self._loop = loop
 
-    def announce(self, run_id: str, result: str) -> None:
+    def announce(self, run_id: str, result: str, label: str = "") -> None:
         """子 Agent（在线程中）完成后调用，直接 put 到线程安全队列。"""
         msg = {
             "role": "user",
             "content": f"[subagent:{run_id}] Task completed.\n\nResult:\n{result}",
         }
         self.announce_queue.put(msg)
+        
+        # 尝试更新任务列表（如果 emit_todo 可用）
+        try:
+            from .tools import emit_todo
+            status_icon = "✓" if "[ERROR]" not in result else "❌"
+            status = "done" if "[ERROR]" not in result else "error"
+            emit_todo([
+                {"id": f"sub_{label or run_id}", "title": f"{status_icon} {label or run_id[:8]}", "status": status},
+            ])
+        except Exception:
+            pass  # 忽略任务列表更新失败
 
     def count_active(self) -> int:
         runs = registry.list_runs(self.session_id)
@@ -100,11 +111,11 @@ def spawn_subagent(
             agent = agent_factory()
             result = asyncio.run(agent.run(task))
             registry.mark_ended(run_id, {"status": "ok", "result": result})
-            manager.announce(run_id, result)
+            manager.announce(run_id, result, label=effective_label)
         except Exception as e:
             err = str(e)
             registry.mark_ended(run_id, {"status": "error", "result": err})
-            manager.announce(run_id, f"[ERROR] {err}")
+            manager.announce(run_id, f"[ERROR] {err}", label=effective_label)
 
     t = threading.Thread(target=_run_in_thread, daemon=True, name=f"subagent-{run_id[:8]}")
     t.start()
