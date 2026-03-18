@@ -743,18 +743,20 @@ async function saveCurrentSession() {
   const feed = document.getElementById('feed');
   const feedHtml = feed ? feed.innerHTML : '';
   
-  // 更新缓存
+  // 先更新缓存（同步）
+  const messagesCopy = [...history];
   sessionCache[curId] = {
-    messages: [...history],
+    messages: messagesCopy,
     feedHtml: feedHtml
   };
   
   try {
+    // 异步保存到服务端
     await fetch(`/api/sessions/${curId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messages: history,
+        messages: messagesCopy,
         title: sessions.find(s => s.id === curId)?.title
       })
     });
@@ -762,7 +764,7 @@ async function saveCurrentSession() {
     // 更新本地列表中的元数据
     const idx = sessions.findIndex(s => s.id === curId);
     if (idx >= 0) {
-      sessions[idx].message_count = history.length;
+      sessions[idx].message_count = messagesCopy.length;
       sessions[idx].updated_at = Date.now();
     }
   } catch (e) {
@@ -1292,17 +1294,6 @@ function append(type, data) {
 
   feed.appendChild(el);
   feed.scrollTop = feed.scrollHeight;
-
-  // 实时保存 feedHtml（异步，不阻塞 UI）
-  if (curId) {
-    const currentFeedHtml = feed.innerHTML;
-    sessionCache[curId] = {
-      messages: [...history],
-      feedHtml: currentFeedHtml
-    };
-    // 异步保存到服务端（不 await，避免阻塞）
-    saveCurrentSession().catch(() => {});
-  }
 }
 
 function emptyHtml() {
