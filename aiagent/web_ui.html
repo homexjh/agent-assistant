@@ -821,25 +821,38 @@ function rebuildFeedFromHistory(msgs) {
   const feed = document.getElementById('feed');
   feed.innerHTML = '';
   
-  for (let i = 0; i < msgs.length; i += 2) {
-    const userMsg = msgs[i];
-    const assistantMsg = msgs[i + 1];
+  // 按顺序遍历所有消息
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+    if (!msg) continue;
     
-    if (userMsg && userMsg.role === 'user') {
-      // 添加用户消息
+    if (msg.role === 'user') {
+      // 用户消息
       const userDiv = document.createElement('div');
       userDiv.className = 'ev-user';
-      userDiv.innerHTML = `<div class="bbl">${esc(userMsg.content || '')}</div>`;
+      userDiv.innerHTML = `<div class="bbl">${esc(msg.content || '')}</div>`;
       feed.appendChild(userDiv);
-      
-      // 添加助手消息（如果有）
-      if (assistantMsg) {
-        if (assistantMsg.role === 'assistant') {
-          append('text', { text: assistantMsg.content || '' });
-        } else if (assistantMsg.role === 'tool') {
-          append('tool_result', { name: assistantMsg.name, content: assistantMsg.content });
-        }
+    } 
+    else if (msg.role === 'assistant') {
+      // 助手消息 - 可能包含 tool_calls
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // 渲染 tool_calls
+        const calls = msg.tool_calls.map(tc => ({
+          id: tc.id,
+          name: tc.function?.name || tc.name,
+          args: tc.function?.arguments ? (() => { try { return JSON.parse(tc.function.arguments); } catch(e) { return tc.function.arguments; } })() : tc.args
+        }));
+        append('tool_calls', { calls, round: 1 });
+      } 
+      // 普通文本回复（最后一条 assistant 消息）
+      else if (msg.content && !msgs.slice(i + 1).some(m => m.role === 'assistant' && !m.tool_calls)) {
+        // 这是最后的回复，不是中间思考
+        append('text', { text: msg.content });
       }
+    }
+    else if (msg.role === 'tool') {
+      // 工具结果
+      append('tool_result', { name: msg.name, content: msg.content, tool_id: msg.tool_call_id });
     }
   }
   scrollToBottom();
@@ -1083,8 +1096,31 @@ function handle(data, query, sid) {
     case 'start':    setDot('ok', '已连接'); break;
     case 'thinking': append('thinking', data); break;
     case 'reasoning': append('reasoning', data); break;
-    case 'tool_calls': append('tool_calls', data); break;
-    case 'tool_result': append('tool_result', data); break;
+    case 'tool_calls': 
+      append('tool_calls', data); 
+      // 保存 tool_calls 到 history（用于后续追问和重建 UI）
+      if (data.calls) {
+        history.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: data.calls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+          }))
+        });
+      }
+      break;
+    case 'tool_result': 
+      append('tool_result', data); 
+      // 保存 tool_result 到 history
+      history.push({
+        role: 'tool',
+        tool_call_id: data.tool_id,
+        name: data.name,
+        content: data.content
+      });
+      break;
     case 'subagent_announce': append('announce', data); break;
     case 'waiting_subagents': append('waiting', data); break;
     case 'stopped':
@@ -1165,6 +1201,10 @@ function append(type, data) {
   } else if (type === 'waiting') {
     el.className += ' ev-wait';
     el.innerHTML = `<div class="lbl">⏳ ${esc(data.message || '等待子Agent...')}</div>`;
+  } else if (type === 'text') {
+    // 纯文本回复（用于重建历史时）
+    el.className += ' ev-done';
+    el.innerHTML = `<div class="lbl">✅ Agent 回复</div><div class="body">${mdLite(esc(data.text || data.content || ''))}</div>`;
   } else if (type === 'done') {
     el.className += ' ev-done';
     el.innerHTML = `<div class="lbl">✅ Agent 回复</div><div class="body">${mdLite(esc(data.content))}</div>`;
