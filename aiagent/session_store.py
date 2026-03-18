@@ -43,10 +43,20 @@ def _load_index() -> dict[str, Any]:
 def _save_index(index: dict[str, Any]):
     """保存会话索引"""
     _ensure_dir()
-    tmp_file = INDEX_FILE.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
-    tmp_file.replace(INDEX_FILE)
+    tmp_file = INDEX_FILE.with_suffix(f".tmp.{os.getpid()}")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_file.replace(INDEX_FILE)
+    except Exception:
+        # 清理临时文件
+        try:
+            tmp_file.unlink()
+        except Exception:
+            pass
+        raise
 
 
 def _get_session_file(session_id: str) -> Path:
@@ -239,12 +249,22 @@ def update_session(session_id: str, messages: list[dict], title: str | None = No
         else:
             data["title"] = "新对话"
     
-    # 保存
+    # 保存（使用进程 ID 避免并发冲突）
     _ensure_dir()
-    tmp_file = session_file.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    tmp_file.replace(session_file)
+    tmp_file = session_file.with_suffix(f".tmp.{os.getpid()}")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_file.replace(session_file)
+    except Exception:
+        # 清理临时文件
+        try:
+            tmp_file.unlink()
+        except Exception:
+            pass
+        raise
     
     # 更新索引
     index = _load_index()
