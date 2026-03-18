@@ -142,7 +142,7 @@ async def _image_handler(
                 {"id": "1", "title": f"加载 {len(paths)} 张图片", "status": "done"},
                 {"id": "2", "title": "Vision 批量分析", "status": "done"},
             ])
-        return result
+        return f"[已分析图片: {', '.join(paths)}]\n\n{result}"
     except Exception as e:
         emit_todo([
             {"id": "2", "title": "Vision 分析", "status": "error"},

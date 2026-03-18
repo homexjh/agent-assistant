@@ -246,7 +246,8 @@ async def _pdf_handler(
             {"id": "2", "title": "提取文本内容", "status": "done"},
             {"id": "3", "title": "分析内容", "status": "done"},
         ])
-        return result
+        # 返回结果时附上文件路径，方便后续追问引用
+        return f"[已分析 PDF: {', '.join(paths)}]\n\n{result}"
     except Exception as e:
         emit_todo([
             {"id": "3", "title": "分析内容", "status": "error"},
