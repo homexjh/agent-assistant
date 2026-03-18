@@ -562,6 +562,21 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
 
     def put(**kwargs):
         q.put(kwargs)
+    
+    # 任务列表状态
+    todo_state = {"todos": []}
+    
+    def emit_todo(todos: list[dict]):
+        """
+        发送任务列表更新。
+        todos: [{"id": str, "title": str, "status": "pending|in_progress|done|error"}]
+        """
+        todo_state["todos"] = todos
+        put(event="todo", todos=todos)
+    
+    # 设置任务列表发送器到上下文
+    from .tools import set_todo_emitter
+    set_todo_emitter(emit_todo)
 
     def stopped() -> bool:
         return stop_event.is_set()

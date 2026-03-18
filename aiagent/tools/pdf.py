@@ -142,6 +142,8 @@ async def _pdf_handler(
     max_chars: int = 12000,
 ) -> str:
     """提取 PDF 文本并用 LLM 分析。"""
+    from . import emit_todo
+    
     paths: list[str] = []
     if pdf:
         paths.append(pdf)
@@ -152,10 +154,20 @@ async def _pdf_handler(
     if len(paths) > 10:
         return "Error: too many PDFs (max 10)."
 
+    # 发送任务列表
+    emit_todo([
+        {"id": "1", "title": f"读取 PDF ({len(paths)} 个文件)", "status": "in_progress"},
+        {"id": "2", "title": "提取文本内容", "status": "pending"},
+        {"id": "3", "title": "分析内容", "status": "pending"},
+    ])
+
     # 先检查 pdfminer 是否安装
     try:
         import pdfminer  # noqa
     except ImportError:
+        emit_todo([
+            {"id": "1", "title": "读取 PDF", "status": "error"},
+        ])
         return (
             "Error: pdfminer.six is not installed. "
             "Run: uv add pdfminer.six"
@@ -163,10 +175,20 @@ async def _pdf_handler(
 
     # 提取文本
     all_texts: list[str] = []
-    for p in paths:
+    for i, p in enumerate(paths):
+        # 更新进度
+        emit_todo([
+            {"id": "1", "title": f"读取 PDF ({i+1}/{len(paths)}): {os.path.basename(p)}", "status": "done"},
+            {"id": "2", "title": "提取文本内容", "status": "in_progress"},
+            {"id": "3", "title": "分析内容", "status": "pending"},
+        ])
+        
         try:
             data = _load_pdf_bytes(p)
         except Exception as e:
+            emit_todo([
+                {"id": "1", "title": f"读取 PDF: {os.path.basename(p)}", "status": "error"},
+            ])
             return f"Error loading PDF {p!r}: {e}"
 
         try:
@@ -175,6 +197,9 @@ async def _pdf_handler(
                 page_indices = _parse_page_range(pages, 9999)
             text = _extract_text(data, page_indices)
         except Exception as e:
+            emit_todo([
+                {"id": "2", "title": "提取文本内容", "status": "error"},
+            ])
             return f"Error extracting PDF text from {p!r}: {e}"
 
         fname = os.path.basename(p)
@@ -183,6 +208,13 @@ async def _pdf_handler(
     combined = "\n\n".join(all_texts)
     if len(combined) > max_chars:
         combined = combined[:max_chars] + f"\n\n[truncated at {max_chars} chars]"
+
+    # 更新进度：开始分析
+    emit_todo([
+        {"id": "1", "title": f"读取 PDF ({len(paths)} 个文件)", "status": "done"},
+        {"id": "2", "title": "提取文本内容", "status": "done"},
+        {"id": "3", "title": "分析内容", "status": "in_progress"},
+    ])
 
     # 调用 LLM
     try:
@@ -206,8 +238,19 @@ async def _pdf_handler(
             messages=messages,  # type: ignore
             max_tokens=2048,
         )
-        return response.choices[0].message.content or "(empty response)"
+        result = response.choices[0].message.content or "(empty response)"
+        
+        # 任务完成
+        emit_todo([
+            {"id": "1", "title": f"读取 PDF ({len(paths)} 个文件)", "status": "done"},
+            {"id": "2", "title": "提取文本内容", "status": "done"},
+            {"id": "3", "title": "分析内容", "status": "done"},
+        ])
+        return result
     except Exception as e:
+        emit_todo([
+            {"id": "3", "title": "分析内容", "status": "error"},
+        ])
         return f"Error calling LLM for PDF analysis: {e}"
 
 

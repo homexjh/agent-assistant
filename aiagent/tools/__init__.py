@@ -2,7 +2,24 @@
 from __future__ import annotations
 import inspect
 import json
+from contextvars import ContextVar
 from .types import RegisteredTool, ToolDefinition
+
+# 上下文变量：用于在工具中发送任务列表更新
+todo_emitter: ContextVar[callable | None] = ContextVar('todo_emitter', default=None)
+
+def set_todo_emitter(emitter: callable | None):
+    """设置任务列表发送函数"""
+    todo_emitter.set(emitter)
+
+def emit_todo(todos: list[dict]):
+    """
+    在工具中调用以更新任务列表。
+    todos: [{"id": str, "title": str, "status": "pending|in_progress|done|error"}]
+    """
+    emitter = todo_emitter.get()
+    if emitter:
+        emitter(todos)
 from .exec import exec_tool
 from .file import read_tool, write_tool, edit_tool, apply_patch_tool, restore_tool
 from .process import process_tool
