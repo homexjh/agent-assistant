@@ -689,7 +689,15 @@ buildModelBar();
 let sessions = [];      // 从服务端加载的会话列表
 let sessionCache = {};  // 会话详细数据缓存 {id -> {messages, feedHtml}}
 let curId = null;       // 当前对话 id
-let history = [];       // 当前对话的 messages history
+let history = [];       // 当前对话的 messages history（包含元数据）
+let currentRound = 1;   // 当前轮次，用于重建 UI
+
+// History 条目格式：
+// { role: 'user', content: '...' }
+// { role: 'assistant', content: '...', metadata: { type: 'reasoning', round: 1 } }
+// { role: 'assistant', content: '', tool_calls: [...], metadata: { type: 'tool_calls', round: 1 } }
+// { role: 'tool', name: '...', content: '...', tool_call_id: '...' }
+// { role: 'system', content: '...', metadata: { type: 'announce' } }
 
 // 从服务端加载会话列表
 async function loadSessionsFromServer() {
@@ -795,6 +803,14 @@ function loadSession(id) {
   loadSessionDetail(id).then(detail => {
     if (detail) {
       history = detail.messages || [];
+      currentRound = 1; // 重置轮次
+      // 计算当前最大轮次
+      history.forEach(m => {
+        if (m.metadata?.round && m.metadata.round > currentRound) {
+          currentRound = m.metadata.round;
+        }
+      });
+      
       const feed = document.getElementById('feed');
       // 如果有缓存的 feedHtml 则使用，否则显示空
       if (detail.feedHtml) {
@@ -821,10 +837,16 @@ function rebuildFeedFromHistory(msgs) {
   const feed = document.getElementById('feed');
   feed.innerHTML = '';
   
+  let lastRound = 0;
+  
   // 按顺序遍历所有消息
   for (let i = 0; i < msgs.length; i++) {
     const msg = msgs[i];
     if (!msg) continue;
+    
+    const metadata = msg.metadata || {};
+    const round = metadata.round || 1;
+    const type = metadata.type || '';
     
     if (msg.role === 'user') {
       // 用户消息
@@ -834,25 +856,45 @@ function rebuildFeedFromHistory(msgs) {
       feed.appendChild(userDiv);
     } 
     else if (msg.role === 'assistant') {
-      // 助手消息 - 可能包含 tool_calls
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        // 渲染 tool_calls
+      // 助手消息
+      if (type === 'reasoning' && msg.content) {
+        // 深度思考
+        append('reasoning', { content: msg.content });
+      }
+      else if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // 工具调用
         const calls = msg.tool_calls.map(tc => ({
           id: tc.id,
           name: tc.function?.name || tc.name,
-          args: tc.function?.arguments ? (() => { try { return JSON.parse(tc.function.arguments); } catch(e) { return tc.function.arguments; } })() : tc.args
+          args: tc.function?.arguments ? (() => { 
+            try { return JSON.parse(tc.function.arguments); } 
+            catch(e) { return tc.function.arguments; } 
+          })() : tc.args
         }));
-        append('tool_calls', { calls, round: 1 });
-      } 
-      // 普通文本回复（最后一条 assistant 消息）
-      else if (msg.content && !msgs.slice(i + 1).some(m => m.role === 'assistant' && !m.tool_calls)) {
-        // 这是最后的回复，不是中间思考
-        append('text', { text: msg.content });
+        append('tool_calls', { calls, round: round });
+        lastRound = round;
+      }
+      else if (type === 'final' || (!type && msg.content)) {
+        // 最终回复（检查是否是最后的 assistant 消息）
+        const hasLaterFinal = msgs.slice(i + 1).some(m => 
+          m.role === 'assistant' && m.metadata?.type === 'final'
+        );
+        if (!hasLaterFinal || type === 'final') {
+          append('done', { content: msg.content });
+        }
       }
     }
     else if (msg.role === 'tool') {
       // 工具结果
-      append('tool_result', { name: msg.name, content: msg.content, tool_id: msg.tool_call_id });
+      append('tool_result', { 
+        name: msg.name, 
+        content: msg.content, 
+        tool_id: msg.tool_call_id 
+      });
+    }
+    else if (msg.role === 'system' && type === 'announce') {
+      // 子Agent通知
+      append('announce', { content: msg.content });
     }
   }
   scrollToBottom();
@@ -945,7 +987,7 @@ function newChat(e) {
     }
   }
   // 开新空白对话
-  curId = null; history = []; curQuery = '';
+  curId = null; history = []; curQuery = ''; currentRound = 1;
   document.getElementById('feed').innerHTML = emptyHtml();
   renderHistory();
   setDot('', '就绪');
@@ -1093,12 +1135,26 @@ async function send() {
 
 function handle(data, query, sid) {
   switch (data.event) {
-    case 'start':    setDot('ok', '已连接'); break;
-    case 'thinking': append('thinking', data); break;
-    case 'reasoning': append('reasoning', data); break;
+    case 'start':    
+      setDot('ok', '已连接'); 
+      currentRound = data.round || currentRound;
+      break;
+    case 'thinking': 
+      append('thinking', data); 
+      currentRound = data.round || currentRound;
+      break;
+    case 'reasoning': 
+      append('reasoning', data); 
+      // 保存 reasoning 到 history
+      history.push({
+        role: 'assistant',
+        content: data.content,
+        metadata: { type: 'reasoning', round: data.round || currentRound }
+      });
+      break;
     case 'tool_calls': 
       append('tool_calls', data); 
-      // 保存 tool_calls 到 history（用于后续追问和重建 UI）
+      // 保存 tool_calls 到 history
       if (data.calls) {
         history.push({
           role: 'assistant',
@@ -1106,8 +1162,12 @@ function handle(data, query, sid) {
           tool_calls: data.calls.map(tc => ({
             id: tc.id,
             type: 'function',
-            function: { name: tc.name, arguments: JSON.stringify(tc.args) }
-          }))
+            function: { 
+              name: tc.name, 
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args)
+            }
+          })),
+          metadata: { type: 'tool_calls', round: data.round || currentRound }
         });
       }
       break;
@@ -1121,8 +1181,18 @@ function handle(data, query, sid) {
         content: data.content
       });
       break;
-    case 'subagent_announce': append('announce', data); break;
-    case 'waiting_subagents': append('waiting', data); break;
+    case 'subagent_announce': 
+      append('announce', data); 
+      // 保存 announce 到 history
+      history.push({
+        role: 'system',
+        content: data.content,
+        metadata: { type: 'announce', round: currentRound }
+      });
+      break;
+    case 'waiting_subagents': 
+      append('waiting', data); 
+      break;
     case 'stopped':
       append('stopped', {});
       es.close(); setRunning(false);
@@ -1130,11 +1200,15 @@ function handle(data, query, sid) {
     case 'done':
       append('done', data);
       history.push({ role: 'user', content: query });
-      history.push({ role: 'assistant', content: data.content });
+      history.push({ 
+        role: 'assistant', 
+        content: data.content,
+        metadata: { type: 'final', round: currentRound }
+      });
       curQuery = '';
-      // 异步保存到服务端（不阻塞）
+      currentRound = 1; // 重置轮次
+      // 异步保存到服务端
       saveCurrentSession().then(() => {
-        // 更新本地会话列表显示
         const s = sessions.find(x => x.id === sid);
         if (s) {
           s.message_count = history.length;

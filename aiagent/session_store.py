@@ -121,6 +121,10 @@ def _sanitize_messages(messages: list[dict]) -> list[dict]:
         # 保留 name（工具结果）
         if "name" in msg:
             clean_msg["name"] = msg["name"]
+        
+        # 保留 metadata（用于 UI 重建）
+        if "metadata" in msg:
+            clean_msg["metadata"] = msg["metadata"]
             
         sanitized.append(clean_msg)
     
