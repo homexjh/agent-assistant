@@ -9,6 +9,7 @@ session_store.py - 服务端会话存储管理
 from __future__ import annotations
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -22,10 +23,45 @@ INDEX_FILE = SESSIONS_DIR / "index.json"
 MAX_SESSIONS = 100  # 最多保留 100 个会话
 MAX_MESSAGES_PER_SESSION = 200  # 单个会话最多消息数
 
+# 全局锁，保护文件写入
+_write_lock = threading.Lock()
+
 
 def _ensure_dir():
     """确保存储目录存在"""
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _atomic_write_json(file_path: Path, data: dict) -> bool:
+    """
+    原子写入 JSON 文件。
+    使用临时文件 + rename 确保原子性。
+    """
+    try:
+        _ensure_dir()
+        # 使用临时文件
+        tmp_path = file_path.with_suffix(f".tmp.{threading.current_thread().ident}")
+        
+        # 写入临时文件
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        # 原子替换
+        tmp_path.replace(file_path)
+        return True
+    except Exception as e:
+        # 清理临时文件
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
+        # 如果原子写入失败，尝试直接写入
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception:
+            return False
 
 
 def _load_index() -> dict[str, Any]:
@@ -41,22 +77,9 @@ def _load_index() -> dict[str, Any]:
 
 
 def _save_index(index: dict[str, Any]):
-    """保存会话索引"""
-    _ensure_dir()
-    tmp_file = INDEX_FILE.with_suffix(f".tmp.{os.getpid()}")
-    try:
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(index, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp_file.replace(INDEX_FILE)
-    except Exception:
-        # 清理临时文件
-        try:
-            tmp_file.unlink()
-        except Exception:
-            pass
-        raise
+    """保存会话索引（线程安全）"""
+    with _write_lock:
+        _atomic_write_json(INDEX_FILE, index)
 
 
 def _get_session_file(session_id: str) -> Path:
@@ -109,9 +132,10 @@ def list_sessions() -> list[dict[str, Any]]:
     获取会话列表（按更新时间倒序）
     返回: [{id, title, updated_at, message_count, model}]
     """
-    index = _load_index()
-    sessions = []
+    with _write_lock:
+        index = _load_index()
     
+    sessions = []
     for session_id, meta in index.get("sessions", {}).items():
         sessions.append({
             "id": session_id,
@@ -161,43 +185,41 @@ def create_session(title: str = "新对话", model: str = "") -> str:
     创建新会话
     返回: session_id
     """
-    _ensure_dir()
-    
-    session_id = f"sess_{int(time.time() * 1000)}"
-    now = int(time.time() * 1000)
-    
-    session_data = {
-        "id": session_id,
-        "title": title,
-        "messages": [],
-        "created_at": now,
-        "updated_at": now,
-        "model": model,
-        "version": 1,
-    }
-    
-    # 保存会话文件
-    session_file = _get_session_file(session_id)
-    tmp_file = session_file.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(session_data, f, ensure_ascii=False, indent=2)
-    tmp_file.replace(session_file)
-    
-    # 更新索引
-    index = _load_index()
-    index["sessions"][session_id] = {
-        "title": title,
-        "created_at": now,
-        "updated_at": now,
-        "message_count": 0,
-        "model": model,
-    }
-    _save_index(index)
-    
-    # 清理旧会话
-    _cleanup_old_sessions()
-    
-    return session_id
+    with _write_lock:
+        _ensure_dir()
+        
+        session_id = f"sess_{int(time.time() * 1000)}"
+        now = int(time.time() * 1000)
+        
+        session_data = {
+            "id": session_id,
+            "title": title,
+            "messages": [],
+            "created_at": now,
+            "updated_at": now,
+            "model": model,
+            "version": 1,
+        }
+        
+        # 保存会话文件
+        session_file = _get_session_file(session_id)
+        _atomic_write_json(session_file, session_data)
+        
+        # 更新索引
+        index = _load_index()
+        index["sessions"][session_id] = {
+            "title": title,
+            "created_at": now,
+            "updated_at": now,
+            "message_count": 0,
+            "model": model,
+        }
+        _atomic_write_json(INDEX_FILE, index)
+        
+        # 清理旧会话
+        _cleanup_old_sessions_unlocked()
+        
+        return session_id
 
 
 def update_session(session_id: str, messages: list[dict], title: str | None = None) -> bool:
@@ -206,80 +228,68 @@ def update_session(session_id: str, messages: list[dict], title: str | None = No
     messages: 完整的消息列表（会覆盖）
     title: 可选，更新标题
     """
-    session_file = _get_session_file(session_id)
-    
-    # 加载现有数据（如果存在）
-    if session_file.exists():
-        try:
-            with open(session_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-    else:
-        data = {}
-    
-    now = int(time.time() * 1000)
-    
-    # 更新字段
-    data["id"] = session_id
-    data["updated_at"] = now
-    if "created_at" not in data:
-        data["created_at"] = now
-    if "version" not in data:
-        data["version"] = 1
-    
-    # 清理并保存消息
-    sanitized = _sanitize_messages(messages)
-    # 限制消息数量（保留最新的）
-    if len(sanitized) > MAX_MESSAGES_PER_SESSION:
-        sanitized = sanitized[-MAX_MESSAGES_PER_SESSION:]
-    data["messages"] = sanitized
-    
-    # 更新标题
-    if title:
-        data["title"] = title
-    elif "title" not in data:
-        # 从第一条用户消息生成标题
-        for msg in sanitized:
-            if msg.get("role") == "user" and msg.get("content"):
-                content = msg["content"]
-                if isinstance(content, str):
-                    data["title"] = content[:30] + "..." if len(content) > 30 else content
-                    break
+    with _write_lock:
+        session_file = _get_session_file(session_id)
+        
+        # 加载现有数据（如果存在）
+        if session_file.exists():
+            try:
+                with open(session_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
         else:
-            data["title"] = "新对话"
-    
-    # 保存（使用进程 ID 避免并发冲突）
-    _ensure_dir()
-    tmp_file = session_file.with_suffix(f".tmp.{os.getpid()}")
-    try:
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        tmp_file.replace(session_file)
-    except Exception:
-        # 清理临时文件
-        try:
-            tmp_file.unlink()
-        except Exception:
-            pass
-        raise
-    
-    # 更新索引
-    index = _load_index()
-    if session_id not in index["sessions"]:
-        index["sessions"][session_id] = {}
-    
-    index["sessions"][session_id].update({
-        "title": data["title"],
-        "updated_at": now,
-        "message_count": len(sanitized),
-        "model": data.get("model", ""),
-    })
-    _save_index(index)
-    
-    return True
+            data = {}
+        
+        now = int(time.time() * 1000)
+        
+        # 更新字段
+        data["id"] = session_id
+        data["updated_at"] = now
+        if "created_at" not in data:
+            data["created_at"] = now
+        if "version" not in data:
+            data["version"] = 1
+        
+        # 清理并保存消息
+        sanitized = _sanitize_messages(messages)
+        # 限制消息数量（保留最新的）
+        if len(sanitized) > MAX_MESSAGES_PER_SESSION:
+            sanitized = sanitized[-MAX_MESSAGES_PER_SESSION:]
+        data["messages"] = sanitized
+        
+        # 更新标题
+        if title:
+            data["title"] = title
+        elif "title" not in data:
+            # 从第一条用户消息生成标题
+            for msg in sanitized:
+                if msg.get("role") == "user" and msg.get("content"):
+                    content = msg["content"]
+                    if isinstance(content, str):
+                        data["title"] = content[:30] + "..." if len(content) > 30 else content
+                        break
+            else:
+                data["title"] = "新对话"
+        
+        # 保存
+        if not _atomic_write_json(session_file, data):
+            return False
+        
+        # 更新索引
+        index = _load_index()
+        if session_id not in index["sessions"]:
+            index["sessions"][session_id] = {}
+        
+        index["sessions"][session_id].update({
+            "title": data["title"],
+            "updated_at": now,
+            "message_count": len(sanitized),
+            "model": data.get("model", ""),
+        })
+        _atomic_write_json(INDEX_FILE, index)
+        
+        return True
 
 
 def append_messages(session_id: str, messages: list[dict]) -> bool:
@@ -301,26 +311,27 @@ def append_messages(session_id: str, messages: list[dict]) -> bool:
 
 def delete_session(session_id: str) -> bool:
     """删除会话"""
-    session_file = _get_session_file(session_id)
-    
-    # 删除文件
-    try:
-        if session_file.exists():
-            session_file.unlink()
-    except Exception:
-        pass
-    
-    # 更新索引
-    index = _load_index()
-    if session_id in index.get("sessions", {}):
-        del index["sessions"][session_id]
-        _save_index(index)
-        return True
-    return False
+    with _write_lock:
+        session_file = _get_session_file(session_id)
+        
+        # 删除文件
+        try:
+            if session_file.exists():
+                session_file.unlink()
+        except Exception:
+            pass
+        
+        # 更新索引
+        index = _load_index()
+        if session_id in index.get("sessions", {}):
+            del index["sessions"][session_id]
+            _atomic_write_json(INDEX_FILE, index)
+            return True
+        return False
 
 
-def _cleanup_old_sessions():
-    """清理最旧的会话，保持数量在限制内"""
+def _cleanup_old_sessions_unlocked():
+    """清理最旧的会话，保持数量在限制内（调用者必须持有锁）"""
     index = _load_index()
     sessions = index.get("sessions", {})
     
@@ -336,17 +347,40 @@ def _cleanup_old_sessions():
     to_delete = sorted_sessions[:len(sorted_sessions) - MAX_SESSIONS]
     
     for session_id, _ in to_delete:
-        delete_session(session_id)
+        # 删除文件
+        try:
+            session_file = _get_session_file(session_id)
+            if session_file.exists():
+                session_file.unlink()
+        except Exception:
+            pass
+        # 从索引移除
+        if session_id in index["sessions"]:
+            del index["sessions"][session_id]
+    
+    # 保存更新后的索引
+    _atomic_write_json(INDEX_FILE, index)
 
 
 def clear_all_sessions() -> int:
     """清空所有会话，返回删除数量"""
-    index = _load_index()
-    session_ids = list(index.get("sessions", {}).keys())
-    
-    count = 0
-    for session_id in session_ids:
-        if delete_session(session_id):
+    with _write_lock:
+        index = _load_index()
+        session_ids = list(index.get("sessions", {}).keys())
+        
+        count = 0
+        for session_id in session_ids:
+            # 删除文件
+            try:
+                session_file = _get_session_file(session_id)
+                if session_file.exists():
+                    session_file.unlink()
+            except Exception:
+                pass
             count += 1
-    
-    return count
+        
+        # 清空索引
+        index["sessions"] = {}
+        _atomic_write_json(INDEX_FILE, index)
+        
+        return count
