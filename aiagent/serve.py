@@ -82,6 +82,10 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_cron_logs()
         elif path == "/config":
             self._serve_config()
+        elif path == "/api/sessions":
+            self._handle_sessions_list()
+        elif path.startswith("/api/sessions/"):
+            self._handle_session_get(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -103,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_cron_post(data)
         elif path == "/run":
             self._handle_run_post(data)
+        elif path.startswith("/api/sessions"):
+            self._handle_session_post(path, data)
         else:
             self.send_response(404)
             self.end_headers()
@@ -796,6 +802,93 @@ def _img_b64(path: str) -> str | None:
         return f"data:{mime};base64,{data}"
     except Exception:
         return None
+
+
+# ============================================================================
+# Session API 处理
+# ============================================================================
+
+def _json_response(self, data: dict, status: int = 200):
+    """发送 JSON 响应"""
+    self.send_response(status)
+    self.send_header("Content-Type", "application/json")
+    self._cors()
+    self.end_headers()
+    self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+
+
+def _handle_sessions_list(self):
+    """GET /api/sessions - 获取会话列表"""
+    from . import session_store
+    sessions = session_store.list_sessions()
+    _json_response(self, {"sessions": sessions})
+
+
+def _handle_session_get(self, path: str):
+    """GET /api/sessions/{id} - 获取单个会话"""
+    from . import session_store
+    
+    # 解析路径 /api/sessions/{id}
+    parts = path.strip("/").split("/")
+    if len(parts) < 3:
+        _json_response(self, {"error": "Invalid session ID"}, 400)
+        return
+    
+    session_id = parts[2]
+    
+    # 特殊处理：clear_all 操作
+    if session_id == "clear_all":
+        count = session_store.clear_all_sessions()
+        _json_response(self, {"cleared": count})
+        return
+    
+    session = session_store.get_session(session_id)
+    if session is None:
+        _json_response(self, {"error": "Session not found"}, 404)
+        return
+    
+    _json_response(self, session)
+
+
+def _handle_session_post(self, path: str, data: dict):
+    """POST /api/sessions 或 /api/sessions/{id} - 创建或更新会话"""
+    from . import session_store
+    
+    # 解析路径
+    parts = path.strip("/").split("/")
+    
+    # POST /api/sessions - 创建新会话
+    if len(parts) < 3:
+        title = data.get("title", "新对话")
+        model = data.get("model", "")
+        session_id = session_store.create_session(title, model)
+        _json_response(self, {"id": session_id, "created": True})
+        return
+    
+    session_id = parts[2]
+    
+    # POST /api/sessions/{id}/delete - 删除会话
+    if len(parts) >= 4 and parts[3] == "delete":
+        success = session_store.delete_session(session_id)
+        _json_response(self, {"success": success})
+        return
+    
+    # POST /api/sessions/{id} - 更新会话
+    messages = data.get("messages", [])
+    title = data.get("title")
+    
+    success = session_store.update_session(session_id, messages, title)
+    if success:
+        _json_response(self, {"success": True, "updated": True})
+    else:
+        _json_response(self, {"error": "Failed to update session"}, 500)
+
+
+# 绑定方法到 Handler
+Handler._json_response = _json_response
+Handler._handle_sessions_list = _handle_sessions_list
+Handler._handle_session_get = _handle_session_get
+Handler._handle_session_post = _handle_session_post
 
 
 def main():

@@ -684,59 +684,198 @@ function pickModel(btn) {
 }
 buildModelBar();
 
-// ===== 历史持久化 =====
-// sessions: [{id, q, t, model, history:[{role,content},...], feedHtml}]
-let sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-let curId = null;   // 当前对话 id
-let history = [];   // 当前对话的 messages history
+// ===== 服务端会话持久化 =====
+// sessions: [{id, title, updated_at, message_count, model}]
+let sessions = [];      // 从服务端加载的会话列表
+let sessionCache = {};  // 会话详细数据缓存 {id -> {messages, feedHtml}}
+let curId = null;       // 当前对话 id
+let history = [];       // 当前对话的 messages history
 
-function saveSessions() {
-  // 只保留最近 30 条，每条 feedHtml 截断避免超出 localStorage 限制
-  const toSave = sessions.slice(-30).map(s => ({
-    ...s,
-    feedHtml: (s.feedHtml || '').slice(0, 20000),
-  }));
-  try { localStorage.setItem('sessions', JSON.stringify(toSave)); } catch(e) {}
+// 从服务端加载会话列表
+async function loadSessionsFromServer() {
+  try {
+    const res = await fetch('/api/sessions');
+    const data = await res.json();
+    sessions = data.sessions || [];
+    renderHistory();
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+    sessions = [];
+  }
+}
+
+// 从服务端加载单个会话详情
+async function loadSessionDetail(id) {
+  // 检查缓存
+  if (sessionCache[id]) {
+    return sessionCache[id];
+  }
+  
+  try {
+    const res = await fetch(`/api/sessions/${id}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    
+    // 缓存
+    sessionCache[id] = {
+      messages: data.messages || [],
+      feedHtml: ''  // feedHtml 是 UI 状态，服务端不存储
+    };
+    return sessionCache[id];
+  } catch (e) {
+    console.error('Failed to load session detail:', e);
+    return null;
+  }
+}
+
+// 保存当前会话到服务端
+async function saveCurrentSession() {
+  if (!curId) return;
+  
+  const feed = document.getElementById('feed');
+  const feedHtml = feed ? feed.innerHTML : '';
+  
+  // 更新缓存
+  sessionCache[curId] = {
+    messages: [...history],
+    feedHtml: feedHtml
+  };
+  
+  try {
+    await fetch(`/api/sessions/${curId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        title: sessions.find(s => s.id === curId)?.title
+      })
+    });
+    
+    // 更新本地列表中的元数据
+    const idx = sessions.findIndex(s => s.id === curId);
+    if (idx >= 0) {
+      sessions[idx].message_count = history.length;
+      sessions[idx].updated_at = Date.now();
+    }
+  } catch (e) {
+    console.error('Failed to save session:', e);
+  }
 }
 
 function renderHistory() {
-  document.getElementById('hlist').innerHTML = [...sessions].reverse().map(s =>
+  if (sessions.length === 0) {
+    document.getElementById('hlist').innerHTML = '<div style="padding:20px;color:var(--text2);text-align:center;font-size:12px">暂无历史对话</div>';
+    return;
+  }
+  
+  document.getElementById('hlist').innerHTML = sessions.map(s =>
     `<div class="hi${s.id===curId?' active':''}" onclick="loadSession('${s.id}')">
       <span class="del" onclick="event.stopPropagation();delSession('${s.id}')">×</span>
-      <div class="q">${esc(s.q)}</div>
-      <div class="m">${new Date(s.t).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}
-        · <span style="color:var(--accent);opacity:.7">${s.model.split('-').slice(-1)[0]}</span>
+      <div class="q">${esc(s.title || '新对话')}</div>
+      <div class="m">${new Date(s.updated_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}
+        · <span style="color:var(--accent);opacity:.7">${(s.model || '').split('-').slice(-1)[0] || 'AI'}</span>
+        · ${s.message_count || 0}条
       </div>
     </div>`
   ).join('');
 }
 
-function loadSession(id) {
+async function loadSession(id) {
   const s = sessions.find(x => x.id === id);
   if (!s) return;
+  
+  // 先保存当前会话
+  if (curId && curId !== id) {
+    await saveCurrentSession();
+  }
+  
   curId = id;
-  history = s.history || [];
-  const feed = document.getElementById('feed');
-  feed.innerHTML = s.feedHtml || emptyHtml();
-  renderHistory();
-}
-
-function delSession(id) {
-  sessions = sessions.filter(s => s.id !== id);
-  saveSessions();
-  if (curId === id) {
-    curId = null; history = [];
+  
+  // 加载会话详情
+  const detail = await loadSessionDetail(id);
+  if (detail) {
+    history = detail.messages || [];
+    const feed = document.getElementById('feed');
+    // 如果有缓存的 feedHtml 则使用，否则显示空
+    if (detail.feedHtml) {
+      feed.innerHTML = detail.feedHtml;
+    } else {
+      feed.innerHTML = emptyHtml();
+      // 重建 UI：从历史消息渲染
+      rebuildFeedFromHistory(history);
+    }
+  } else {
+    history = [];
     document.getElementById('feed').innerHTML = emptyHtml();
   }
+  
   renderHistory();
 }
 
-function clearAllHistory() {
-  sessions = []; curId = null; history = [];
-  saveSessions();
-  document.getElementById('feed').innerHTML = emptyHtml();
-  renderHistory();
+// 从历史消息重建 UI（当 feedHtml 丢失时）
+function rebuildFeedFromHistory(msgs) {
+  const feed = document.getElementById('feed');
+  feed.innerHTML = '';
+  
+  for (let i = 0; i < msgs.length; i += 2) {
+    const userMsg = msgs[i];
+    const assistantMsg = msgs[i + 1];
+    
+    if (userMsg && userMsg.role === 'user') {
+      // 添加用户消息
+      const userDiv = document.createElement('div');
+      userDiv.className = 'ev-user';
+      userDiv.innerHTML = `<div class="bbl">${esc(userMsg.content || '')}</div>`;
+      feed.appendChild(userDiv);
+      
+      // 添加助手消息（如果有）
+      if (assistantMsg) {
+        if (assistantMsg.role === 'assistant') {
+          append('text', { text: assistantMsg.content || '' });
+        } else if (assistantMsg.role === 'tool') {
+          append('tool_result', { name: assistantMsg.name, content: assistantMsg.content });
+        }
+      }
+    }
+  }
+  scrollToBottom();
 }
+
+async function delSession(id) {
+  try {
+    await fetch(`/api/sessions/${id}/delete`, { method: 'POST' });
+    sessions = sessions.filter(s => s.id !== id);
+    delete sessionCache[id];
+    
+    if (curId === id) {
+      curId = null; 
+      history = [];
+      document.getElementById('feed').innerHTML = emptyHtml();
+    }
+    renderHistory();
+  } catch (e) {
+    console.error('Failed to delete session:', e);
+  }
+}
+
+async function clearAllHistory() {
+  if (!confirm('确定要清空所有历史对话吗？')) return;
+  
+  try {
+    await fetch('/api/sessions/clear_all');
+    sessions = []; 
+    sessionCache = {};
+    curId = null; 
+    history = [];
+    document.getElementById('feed').innerHTML = emptyHtml();
+    renderHistory();
+  } catch (e) {
+    console.error('Failed to clear sessions:', e);
+  }
+}
+
+// 初始化：加载会话列表
+loadSessionsFromServer();
 
 // ===== 运行状态 =====
 let running = false;
@@ -745,7 +884,7 @@ let curRunId = null;
 
 let curQuery = '';  // 当前轮的 user query，用于停止时保存上下文
 
-function stopRun() {
+async function stopRun() {
   if (!running || !curRunId) return;
   fetch(`/stop?rid=${curRunId}`).catch(() => {});
   if (es) { es.close(); es = null; }
@@ -757,8 +896,7 @@ function stopRun() {
     history.push({ role: 'assistant', content: '[已手动停止]' });
     curQuery = '';
   }
-  const s = sessions.find(x => x.id === curId);
-  if (s) { s.history = [...history]; s.feedHtml = document.getElementById('feed').innerHTML; saveSessions(); }
+  await saveCurrentSession();
 }
 
 function setRunning(v) {
@@ -773,7 +911,7 @@ function setRunning(v) {
 }
 
 // ===== 新建 / 发送 =====
-function newChat(e) {
+async function newChat(e) {
   if (e) { e.preventDefault(); e.stopPropagation(); }
   // 如果正在运行，先停止（不保存停止消息，直接新建）
   if (running) {
@@ -787,12 +925,7 @@ function newChat(e) {
     if (curId && curQuery) {
       history.push({ role: 'user', content: curQuery });
       history.push({ role: 'assistant', content: '[已停止]' });
-      const s = sessions.find(x => x.id === curId);
-      if (s) { 
-        s.history = [...history]; 
-        s.feedHtml = document.getElementById('feed').innerHTML; 
-        saveSessions(); 
-      }
+      await saveCurrentSession();
     }
   }
   // 开新空白对话
@@ -814,11 +947,27 @@ async function send() {
   curQuery = q || '[文件]';
 
   // 如果没有当前对话，新建 session；否则复用当前 session（多轮追加）
-  if (!curId) {
-    curId = 'sess_' + Date.now();
-    sessions.push({ id: curId, q: curQuery, t: Date.now(), model: selModel, history: [], feedHtml: '' });
+  let sid = curId;
+  if (!sid) {
+    // 创建新会话（调用服务端 API）
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: curQuery.slice(0, 30), model: selModel })
+      });
+      const data = await res.json();
+      sid = data.id;
+      curId = sid;
+      sessions.unshift({ id: sid, title: curQuery.slice(0, 30), updated_at: Date.now(), message_count: 0, model: selModel });
+      renderHistory();
+    } catch (e) {
+      console.error('Failed to create session:', e);
+      // 降级：使用本地临时 ID
+      sid = 'sess_' + Date.now();
+      curId = sid;
+    }
   }
-  const sid = curId;
 
   const emp = document.getElementById('emp');
   if (emp) emp.remove();
@@ -899,7 +1048,7 @@ async function send() {
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
-            handle(data, q, sid);
+            await handle(data, q, sid);
           } catch (e) {
             console.error('解析消息失败:', e, line);
           }
@@ -911,7 +1060,7 @@ async function send() {
     if (buffer.startsWith('data: ')) {
       try {
         const data = JSON.parse(buffer.slice(6));
-        handle(data, q, sid);
+        await handle(data, q, sid);
       } catch (e) {
         console.error('解析消息失败:', e);
       }
@@ -926,7 +1075,7 @@ async function send() {
   }
 }
 
-function handle(data, query, sid) {
+async function handle(data, query, sid) {
   switch (data.event) {
     case 'start':    setDot('ok', '已连接'); break;
     case 'thinking': append('thinking', data); break;
@@ -944,12 +1093,14 @@ function handle(data, query, sid) {
       history.push({ role: 'user', content: query });
       history.push({ role: 'assistant', content: data.content });
       curQuery = '';
-      // 更新持久化
+      // 保存到服务端
+      await saveCurrentSession();
+      // 更新本地会话列表显示
       const s = sessions.find(x => x.id === sid);
       if (s) {
-        s.history = [...history];
-        s.feedHtml = document.getElementById('feed').innerHTML;
-        saveSessions();
+        s.message_count = history.length;
+        s.updated_at = Date.now();
+        renderHistory();
       }
       es.close(); setRunning(false);
       break;
@@ -1071,12 +1222,7 @@ function resize(el) { el.style.height='auto'; el.style.height=Math.min(el.scroll
 ta.addEventListener('input', () => resize(ta));
 ta.addEventListener('keydown', e => { if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();send();} });
 
-// 初始化：恢复上次对话
-renderHistory();
-if (sessions.length > 0) {
-  const last = sessions[sessions.length - 1];
-  loadSession(last.id);
-}
+// 初始化：会话列表已从服务端加载（见 loadSessionsFromServer）
 // ===== 定时任务面板 =====
 let cronModalOpen = false;
 
