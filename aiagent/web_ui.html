@@ -846,7 +846,7 @@ function rebuildFeedFromHistory(msgs) {
   
   let lastRound = 0;
   
-  // 按顺序遍历所有消息
+  // 正序遍历消息（时间顺序：旧 → 新），让旧消息在上，新消息在下
   for (let i = 0; i < msgs.length; i++) {
     const msg = msgs[i];
     if (!msg) continue;
@@ -955,9 +955,8 @@ function stopRun() {
   if (es) { es.close(); es = null; }
   setRunning(false);
   append('stopped', {});
-  // 停止时把本轮 user query 也存进 history，保留上下文
+  // 停止时保存最终状态（用户消息已在 send() 时保存）
   if (curQuery) {
-    history.push({ role: 'user', content: curQuery });
     history.push({ role: 'assistant', content: '[已手动停止]' });
     curQuery = '';
   }
@@ -987,9 +986,8 @@ function newChat(e) {
     if (curRunId) {
       fetch(`/stop?rid=${curRunId}`).catch(() => {});
     }
-    // 保存当前对话状态（如果已存在）
+    // 保存当前对话状态（如果已存在，用户消息已在 send() 时保存）
     if (curId && curQuery) {
-      history.push({ role: 'user', content: curQuery });
       history.push({ role: 'assistant', content: '[已停止]' });
       saveCurrentSession().catch(() => {});
     }
@@ -1047,6 +1045,9 @@ async function send() {
     const fileList = attachedFiles.map(f => `[${f.file.name}]`).join(' ');
     userContent = (q ? q + '\n\n' : '') + fileList;
   }
+  
+  // 立即保存用户消息到 history（确保在最前面）
+  history.push({ role: 'user', content: userContent });
   append('user', { content: userContent });
 
   setRunning(true);
@@ -1156,7 +1157,7 @@ function handle(data, query, sid) {
       break;
     case 'reasoning': 
       append('reasoning', data); 
-      // 保存 reasoning 到 history
+      // 直接保存到 history，保持顺序
       history.push({
         role: 'assistant',
         content: data.content,
@@ -1211,7 +1212,7 @@ function handle(data, query, sid) {
       break;
     case 'done':
       append('done', data);
-      history.push({ role: 'user', content: query });
+      // 保存最终回复（用户消息已在 send() 时保存）
       history.push({ 
         role: 'assistant', 
         content: data.content,
@@ -1305,8 +1306,7 @@ function append(type, data) {
     el.innerHTML = `❌ 错误：${esc(data.message)}`;
   }
 
-  feed.appendChild(el);
-  feed.scrollTop = feed.scrollHeight;
+  feed.appendChild(el);  // 添加到末尾（旧消息在上，新消息在下）
 }
 
 function scrollToBottom() {
