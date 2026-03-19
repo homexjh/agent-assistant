@@ -714,14 +714,16 @@ async function loadSessionsFromServer() {
 
 // 从服务端加载单个会话详情
 async function loadSessionDetail(id) {
-  // 检查缓存
-  if (sessionCache[id]) {
+  // 检查缓存（只缓存有消息的）
+  if (sessionCache[id] && sessionCache[id].messages && sessionCache[id].messages.length > 0) {
     return sessionCache[id];
   }
   
   try {
     const res = await fetch(`/api/sessions/${id}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return null;
+    }
     const data = await res.json();
     
     // 缓存
@@ -745,6 +747,7 @@ async function saveCurrentSession() {
   
   // 先更新缓存（同步）
   const messagesCopy = [...history];
+  
   sessionCache[curId] = {
     messages: messagesCopy,
     feedHtml: feedHtml
@@ -778,7 +781,7 @@ function renderHistory() {
     return;
   }
   
-  document.getElementById('hlist').innerHTML = sessions.map(s =>
+  const html = sessions.map(s =>
     `<div class="hi${s.id===curId?' active':''}" onclick="loadSession('${s.id}')">
       <span class="del" onclick="event.stopPropagation();delSession('${s.id}')">×</span>
       <div class="q">${esc(s.title || '新对话')}</div>
@@ -788,6 +791,8 @@ function renderHistory() {
       </div>
     </div>`
   ).join('');
+  
+  document.getElementById('hlist').innerHTML = html;
 }
 
 function loadSession(id) {
@@ -827,7 +832,7 @@ function loadSession(id) {
       document.getElementById('feed').innerHTML = emptyHtml();
     }
     renderHistory();
-  }).catch(() => {
+  }).catch((e) => {
     history = [];
     document.getElementById('feed').innerHTML = emptyHtml();
     renderHistory();
@@ -849,6 +854,7 @@ function rebuildFeedFromHistory(msgs) {
     const metadata = msg.metadata || {};
     const round = metadata.round || 1;
     const type = metadata.type || '';
+    
     
     if (msg.role === 'user') {
       // 用户消息
@@ -1009,6 +1015,9 @@ async function send() {
   // 如果没有当前对话，新建 session；否则复用当前 session（多轮追加）
   let sid = curId;
   if (!sid) {
+    // 新会话：清空历史，重置轮次
+    history = [];
+    currentRound = 1;
     // 创建新会话（调用服务端 API）
     try {
       const res = await fetch('/api/sessions', {
@@ -1197,7 +1206,8 @@ function handle(data, query, sid) {
       break;
     case 'stopped':
       append('stopped', {});
-      es.close(); setRunning(false);
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'done':
       append('done', data);
@@ -1218,17 +1228,20 @@ function handle(data, query, sid) {
           renderHistory();
         }
       }).catch(() => {});
-      es.close(); setRunning(false);
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'error':
       append('err', data);
-      es.close(); setRunning(false);
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'todo':
       updateTodoList(data.todos || []);
       break;
     case 'end':
-      es.close(); break;
+      if (es) { es.close(); es = null; }
+      break;
   }
 }
 
@@ -1294,6 +1307,11 @@ function append(type, data) {
 
   feed.appendChild(el);
   feed.scrollTop = feed.scrollHeight;
+}
+
+function scrollToBottom() {
+  const feed = document.getElementById('feed');
+  if (feed) feed.scrollTop = feed.scrollHeight;
 }
 
 function emptyHtml() {
