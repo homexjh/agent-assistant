@@ -67,7 +67,7 @@ def count_message_tokens(message: dict) -> int:
     
     # 如果有 tool_calls，也计算进去
     tool_calls_tokens = 0
-    if "tool_calls" in message:
+    if "tool_calls" in message and message["tool_calls"]:
         for tc in message["tool_calls"]:
             if isinstance(tc, dict):
                 tool_calls_tokens += estimate_tokens(tc.get("function", {}).get("name", ""))
@@ -98,7 +98,8 @@ def count_messages_tokens(messages: list[dict]) -> int:
     
     total = prefix_overhead
     for msg in messages:
-        total += count_message_tokens(msg) + per_message_overhead
+        if msg:  # 跳过 None 消息
+            total += count_message_tokens(msg) + per_message_overhead
     
     return int(total)
 
