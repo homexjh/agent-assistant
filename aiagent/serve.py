@@ -692,6 +692,11 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
 
         put(event="thinking", round=round_i + 1)
 
+        # 计算并发送当前上下文的 token 使用量
+        from .token_utils import get_token_usage_info
+        token_info = get_token_usage_info(messages, model)
+        put(event="token_usage", **token_info)
+
         try:
             resp = await client.chat.completions.create(
                 model=model, messages=messages,

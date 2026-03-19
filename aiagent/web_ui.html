@@ -27,6 +27,12 @@
   .dot.run { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); animation: pulse 1s infinite; }
   #st { font-size: 13px; color: var(--text2); }
   .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .token-counter { font-size: 12px; color: var(--text3); padding: 4px 10px;
+    background: var(--bg3); border-radius: 12px; border: 1px solid var(--border);
+    transition: all .3s; }
+  .token-counter.normal { color: var(--text3); border-color: var(--border); }
+  .token-counter.warning { color: var(--yellow); border-color: rgba(251, 191, 36, 0.4); }
+  .token-counter.danger { color: var(--red); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.1); }
   .btn-sm { padding: 5px 13px; background: transparent; border: 1px solid var(--border);
     border-radius: 20px; color: var(--text2); font-size: 12px; cursor: pointer;
     transition: all .2s; white-space: nowrap; }
@@ -263,6 +269,7 @@
   <div class="logo">⚡ AIAgent</div>
   <div class="dot" id="dot"></div>
   <span id="st">就绪</span>
+  <div class="token-counter" id="tokenCounter" style="display:none;">···</div>
   <div class="hdr-right">
     <button class="btn-sm btn-stop" id="stopBtn" onclick="stopRun()">■ 停止</button>
     <button class="btn-sm btn-new" onclick="newChat(event)">＋ 新对话</button>
@@ -997,6 +1004,12 @@ function newChat(e) {
   document.getElementById('feed').innerHTML = emptyHtml();
   renderHistory();
   setDot('', '就绪');
+  // 重置 token 显示
+  const tokenCounter = document.getElementById('tokenCounter');
+  if (tokenCounter) {
+    tokenCounter.style.display = 'none';
+    tokenCounter.textContent = '···';
+  }
 }
 
 async function send() {
@@ -1151,6 +1164,9 @@ function handle(data, query, sid) {
       setDot('ok', '已连接'); 
       currentRound = data.round || currentRound;
       break;
+    case 'token_usage':
+      updateTokenDisplay(data);
+      break;
     case 'thinking': 
       append('thinking', data); 
       currentRound = data.round || currentRound;
@@ -1244,6 +1260,21 @@ function handle(data, query, sid) {
       if (es) { es.close(); es = null; }
       break;
   }
+}
+
+// ===== Token 显示 =====
+function updateTokenDisplay(data) {
+  const counter = document.getElementById('tokenCounter');
+  if (!counter) return;
+  
+  // 显示计数器
+  counter.style.display = 'inline-block';
+  
+  // 更新内容
+  counter.textContent = `ᵀᵒᵋᵉₙꞰ ${data.formatted} / ${data.formatted_limit} (${data.percentage}%)`;
+  
+  // 更新状态样式
+  counter.className = 'token-counter ' + (data.status || 'normal');
 }
 
 // ===== 渲染 =====
