@@ -1,81 +1,108 @@
-# 记忆系统设计文档
+# 记忆系统与父子 Agent 设计文档
 
 ## 1. 当前阶段评估
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | **Phase 1: 服务端会话存储** | ✅ **已完成** | 会话列表 + 消息持久化到文件 |
-| **Phase 2: Token 感知** | 🔄 **进行中** | 需要实现上下文截断 |
-| **Phase 3: Compaction** | ⏳ **待启动** | 需要设计摘要机制 |
-| **MEMORY.md** | ⚠️ **基础版** | 简单文本存储，无向量检索 |
-| **父子 Agent 记忆** | ❌ **未实现** | 目前独立运行，无共享 |
+| **Phase 2: Token 感知** | ⏳ **调整：仅统计** | 200K 上下文足够，先做轻量统计 |
+| **Phase 3: Compaction** | ⏳ **延后** | 等实际需求出现再做 |
+| **MEMORY.md** | ⚠️ **基础版** | 需要结构化升级 |
+| **父子 Agent 记忆** | ⚠️ **已部分实现** | announce 已存在，需强化隔离 |
 
 ---
 
-## 2. 记忆分层架构（三阶段完整版）
+## 2. 务实开发计划（调整后）
 
-### 2.1 三层记忆模型
+### 背景
+当前模型（kimi-k2）上下文窗口为 **200K tokens**，普通对话很难触及限制：
+- 典型对话：~1000-3000 tokens/轮
+- 20 轮才：20K-60K tokens
+- 距离 200K 还有很大余量
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    工作记忆 (Working Memory)                   │
-│              当前对话上下文 (10-20轮，约 8K-16K tokens)         │
-├─────────────────────────────────────────────────────────────┤
-│                    短期记忆 (Short-term Memory)                │
-│         memory/YYYY-MM-DD.md - 当天完整对话日志                │
-├─────────────────────────────────────────────────────────────┤
-│                    长期记忆 (Long-term Memory)                 │
-│  MEMORY.md - 用户偏好、重要事实、项目信息                      │
-│  memory/projects/*.md - 项目专用记忆                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 各层职责
-
-| 层级 | 存储位置 | 内容 | 保留时间 | 检索方式 |
-|------|----------|------|----------|----------|
-| 工作记忆 | 内存 (history[]) | 当前对话 | 会话期间 | 直接访问 |
-| 短期记忆 | memory/YYYY-MM-DD.md | 完整对话记录 | 7-30天 | 文件名日期 |
-| 长期记忆 | MEMORY.md, projects/*.md | 摘要、偏好、事实 | 永久 | 关键词/向量搜索 |
+**结论**：Phase 2/3 的复杂截断和 compaction 机制现阶段收益有限，优先做**更紧迫、更有实际收益**的事项。
 
 ---
 
-## 3. MEMORY.md 优化方案
+### Week 1: 轻量 Token 计数 + 子 Agent 隔离
 
-### 3.1 当前问题
-- 只是简单的 Markdown 文本追加
-- 无结构化检索能力
-- AI 容易误读时间戳
+#### Day 1-2: Token 统计（仅展示，不截断）
 
-### 3.2 新目录结构
+实现目标：
+- [ ] 集成 tiktoken 实现精确的 token 计数
+- [ ] 在 Web UI 显示当前对话的 token 使用量
+- [ ] 添加配置项：`ui.show_token_count` (默认 true)
 
+预期界面：
 ```
-workspace/
-├── MEMORY.md              # 长期记忆（用户偏好、重要事实）
-├── memory/
-│   ├── 2026-03-19.md      # 每日日志（当天对话摘要）
-│   ├── 2026-03-18.md      # 昨日日志
-│   ├── subagents/         # 子 Agent 写入区
-│   │   ├── weather-beijing-001.md
-│   │   └── weather-shanghai-002.md
-│   └── projects/          # 项目专用记忆
-│       └── aiagent.md
-└── .memory-index/         # 向量索引（Phase 3+）
-    └── memory.sqlite
+[Token: 3,247 / 200,000]
 ```
 
-### 3.3 结构化格式（新 MEMORY.md）
+**不做的事**：
+- 不实现复杂的截断逻辑
+- 不设硬性限制
+- 不自动清理历史
 
+#### Day 3-5: Phase 4 - 子 Agent 隔离强化
+
+**背景**：子 Agent 目前可以访问父 Agent 的 MEMORY.md，存在污染风险。
+
+实现目标：
+- [ ] 子 Agent 使用独立 workspace：`workspace/subagents/{label}/`
+- [ ] 禁止子 Agent 写入父 Agent 的 MEMORY.md
+- [ ] 上下文注入：启动时从父 Agent MEMORY.md 读取关键信息作为 task 前缀
+
+架构图：
+```
+父 Agent Workspace                    子 Agent Workspace
+┌──────────────────┐                 ┌──────────────────┐
+│ MEMORY.md        │ ──注入文本──>   │ 隔离运行区       │
+│  - 用户偏好       │   (只读)        │  - result.json   │
+│  - 当前项目       │                 │  - transcript    │
+└──────────────────┘                 └──────────────────┘
+         │                                    │
+         │                                    │ announce
+         ▼                                    ▼
+    更新/合并结果 <────────────────────── 任务完成
+```
+
+**API 设计**：
+```python
+def spawn_subagent(
+    task: str, 
+    label: str,
+    context_injection: dict = None,  # 注入的上下文字段
+    cleanup: str = "archive"  # immediate / keep / archive
+):
+    """
+    1. 读取父 Agent MEMORY.md 中 context_injection 指定的字段
+    2. 组装增强 task（前缀注入）
+    3. 在独立 workspace 启动子 Agent
+    4. 完成后通过 announce 回传结果
+    """
+```
+
+#### Day 6-7: Phase 5 - MEMORY.md 结构化（基础版）
+
+**目标**：让 Agent 能正确读取和写入结构化记忆
+
+当前格式（非结构化）：
+```markdown
+# Memory
+- User likes chinese
+- Project: aiagent
+```
+
+新格式（结构化）：
 ```markdown
 # Memory
 
 ## System
 - current_date: 2026-03-19
-- last_updated: 2026-03-19T14:30:00+08:00
+- version: 1
 
 ## User Preferences
-- lucky_number: 42
-- preferred_language: zh-CN
+- language: zh-CN
 - timezone: Asia/Shanghai
 
 ## Facts
@@ -83,265 +110,235 @@ workspace/
 - repo_path: /Users/emdoor/Documents/projects/ai_pc_aiagent_os
 - current_branch: feature/todo-list-20260318
 
+## Daily Summaries
+### 2026-03-19
+- 完成服务端会话存储修复
+```
+
+实现：
+- [ ] 定义 MEMORY.md schema
+- [ ] 实现 `memory_get(key)` 和 `memory_set(key, value)` 工具
+- [ ] 自动更新 `System.current_date`
+
+---
+
+### Week 2+: 后续优化（按需进行）
+
+| 优先级 | 事项 | 触发条件 |
+|--------|------|----------|
+| 中 | 上下文截断 | 用户反馈"对话太长记不住" |
+| 中 | Compaction | 上下文经常超过 50K tokens |
+| 低 | 向量记忆 | 需要语义搜索记忆 |
+
+---
+
+## 3. 详细设计
+
+### 3.1 父子 Agent 记忆共享方案（改良版严格隔离）
+
+#### 设计原则
+
+**核心目标**：子 Agent 不污染父 Agent 记忆，同时能获取必要上下文
+
+**参考对比**：
+- OpenClaw：严格隔离，子 Agent 只继承 AGENTS.md + TOOLS.md
+- 我们的方案：改良版严格隔离，允许**一次性上下文注入**
+
+#### 上下文注入机制
+
+```python
+def prepare_context_injection(fields: list[str]) -> str:
+    """从父 Agent MEMORY.md 读取指定字段，组装注入文本"""
+    memory = parse_memory_md()  # 解析结构化 MEMORY.md
+    
+    injection_parts = []
+    for field in fields:
+        if field in memory:
+            injection_parts.append(f"- {field}: {memory[field]}")
+    
+    if not injection_parts:
+        return ""
+    
+    return f"""【来自父 Agent 的上下文（只读，仅本次任务有效）】
+{chr(10).join(injection_parts)}
+
+---
+
+"""
+
+def spawn_subagent(
+    task: str, 
+    label: str,
+    context_injection: list[str] = ["user_preferences", "current_project"]
+):
+    # 1. 准备注入上下文
+    injection = prepare_context_injection(context_injection)
+    
+    # 2. 组装增强任务
+    enhanced_task = injection + task
+    
+    # 3. 在独立 workspace 启动
+    run_id = sessions_spawn(
+        task=enhanced_task,
+        label=label,
+        workspace=f"workspace/subagents/{label}-{timestamp}/"
+    )
+    
+    return run_id
+```
+
+#### 结果回传机制（已存在）
+
+```python
+# subagent.py - 已存在
+def spawn_subagent(task, label):
+    def run_and_announce():
+        result = run_session(task)
+        manager.announce(run_id, result)
+    
+    threading.Thread(target=run_and_announce).start()
+```
+
+父 Agent 处理：
+```python
+# agent.py
+# 在对话循环中检查 announce 队列
+while True:
+    try:
+        msg = manager.announce_queue.get_nowait()
+        messages.append(msg)  # 注入子 Agent 结果
+    except Empty:
+        break
+```
+
+#### 隔离保证
+
+| 层级 | 父 Agent | 子 Agent | 控制方式 |
+|------|----------|----------|----------|
+| **文件系统** | workspace/ | workspace/subagents/xxx/ | 物理隔离 |
+| **MEMORY.md** | 可读写 | ❌ 不可访问 | 路径隔离 |
+| **上下文注入** | 提供 | 只读（文本） | 一次性注入 |
+| **结果回传** | 接收 | 写入 announce 队列 | 队列机制 |
+
+### 3.2 记忆分层架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    工作记忆 (Working Memory)                   │
+│              当前对话上下文 (~200K tokens)                      │
+│              存储：内存 (history[])                           │
+├─────────────────────────────────────────────────────────────┤
+│                    短期记忆 (Short-term Memory)                │
+│         memory/YYYY-MM-DD.md - 当天完整对话日志                │
+│         保留：7-30天（按需配置）                                │
+├─────────────────────────────────────────────────────────────┤
+│                    长期记忆 (Long-term Memory)                 │
+│  MEMORY.md - 用户偏好、重要事实、项目信息（结构化）              │
+│  memory/projects/*.md - 项目专用记忆                          │
+│  保留：永久                                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.3 MEMORY.md Schema（v1.0）
+
+```markdown
+# Memory
+
+## System
+- current_date: 2026-03-19
+- last_updated: 2026-03-19T14:30:00+08:00
+- version: 1
+
+## User Preferences
+- language: zh-CN
+- timezone: Asia/Shanghai
+- response_style: concise
+
+## Facts
+### Project: aiagent
+- repo_path: /Users/emdoor/Documents/projects/ai_pc_aiagent_os
+- current_branch: feature/todo-list-20260318
+- tech_stack: Python, FastAPI
+
 ### Personal
 - name: emdoor
-- interests: [AI, coding, automation]
 
 ## Daily Summaries
 ### 2026-03-19
-- 完成了服务端会话存储的 bug 修复
-- 讨论了记忆系统的三阶段优化计划
-
-## Tags
-#project/aiagent #personal #preferences
-```
-
-### 3.4 更新规则
-
-1. **自动写入**: AI 在完成任务后自动追加关键信息
-2. **结构化**: 使用 YAML frontmatter 格式便于解析
-3. **时间戳**: 所有条目必须带 ISO 8601 时间戳
-4. **标签系统**: 支持 #tag 便于分类检索
-
----
-
-## 4. 父子 Agent 记忆共享机制
-
-### 4.1 当前问题
-
-- 子 Agent 独立运行，无法访问父 Agent 的上下文
-- 子 Agent 完成后只返回最终结果，丢失思考过程
-- 多次 spawn 子 Agent 时重复提供背景信息
-
-### 4.2 分层写入方案（推荐）
-
-```
-父 Agent (main session)
-    │
-    ├── 读取 MEMORY.md + memory/今日.md 获取上下文
-    │
-    ├── spawn 子 Agent A
-    │   ├── 注入父 Agent 的上下文（只读）
-    │   ├── 子 Agent 写入 workspace/memory/subagents/xxx.md
-    │   └── 完成后通知父 Agent
-    │
-    ├── spawn 子 Agent B
-    │   └── 同样可以访问共享上下文
-    │
-    └── 汇总所有子 Agent 结果，选择性合并到主记忆
-
-workspace/memory/
-├── parent/              # 父 Agent 主记忆（只读继承）
-│   ├── MEMORY.md
-│   └── 2026-03-19.md
-└── subagents/           # 子 Agent 写入区
-    ├── weather-beijing-001.md
-    └── weather-shanghai-002.md
-```
-
-### 4.3 具体实现
-
-#### 4.3.1 子 Agent 启动时注入记忆
-
-```javascript
-// 父 Agent 在 spawn 子 Agent 时
-function spawnSubagent(task, label) {
-    // 1. 准备记忆上下文
-    const memoryContext = {
-        userPreferences: readMemory("user_preferences"),
-        currentProject: readMemory("current_project"),
-        recentFacts: readMemorySection("daily_summaries", 3)
-    };
-    
-    // 2. 在 task 前添加上下文
-    const enhancedTask = `
-上下文信息（来自父 Agent 的记忆）：
-- 用户偏好: ${memoryContext.userPreferences}
-- 当前项目: ${memoryContext.currentProject}
-- 相关背景: ${memoryContext.recentFacts}
-
-你的任务：
-${task}
-
-注意：
-1. 你可以访问 workspace/memory/parent/ 目录获取完整记忆
-2. 完成后请将关键发现写入 workspace/memory/subagents/${label}.md
-3. 不要修改 parent/ 目录下的文件
-    `;
-    
-    return sessionsSpawn({task: enhancedTask, label});
-}
-```
-
-#### 4.3.2 子 Agent 结果写回
-
-```javascript
-// 子 Agent 完成后自动执行
-function onSubagentComplete(result, label, parentSessionId) {
-    // 1. 提取关键信息
-    const summary = extractKeyPoints(result);
-    
-    // 2. 写入子 Agent 专属区域
-    writeToSubagentMemory(label, `
-## [子 Agent: ${label}] ${new Date().toISOString()}
-### 任务摘要
-${summary}
-
-### 详细结果
-${result.substring(0, 2000)}...
-`);
-    
-    // 3. 通知父 Agent
-    notifyParent(parentSessionId, {
-        type: 'subagent_complete',
-        label: label,
-        summary: summary
-    });
-}
-
-// 父 Agent 选择性合并
-function mergeSubagentMemory(label) {
-    const content = readSubagentMemory(label);
-    if (containsImportantFact(content)) {
-        appendToDailyMemory(extractFact(content));
-    }
-}
+- 完成子 Agent 隔离设计
 ```
 
 ---
 
-## 5. 技术实施路线图
-
-### Phase 2: Token 感知 + 智能截断 (2-3周)
-
-#### Week 1: Token 计数基础
-- [ ] 集成 tiktoken 或类似库进行 token 估算
-- [ ] 在发送请求前计算当前上下文 token 数
-- [ ] 添加配置项：`max_context_tokens` (默认 8000)
-
-#### Week 2: 上下文截断策略
-- [ ] 实现分层截断：
-  - 保留 System Prompt (必须)
-  - 保留最近 N 轮完整对话 (可配置，默认 10 轮)
-  - 更早的历史：压缩为摘要或丢弃
-- [ ] 添加 `reserve_tokens` 配置 (预留 token 给回复)
-
-#### Week 3: 智能选择
-- [ ] 当超过阈值时，使用相关性算法选择保留的消息
-- [ ] 实现简单的关键词匹配保留重要消息
-
-### Phase 3: Compaction + 摘要 (3-4周)
-
-#### Week 1: Compaction 触发机制
-- [ ] 监控 token 使用量
-- [ ] 当接近阈值时触发 Compaction
-- [ ] 标记 `compaction_pending` 状态
-
-#### Week 2: LLM 摘要生成
-- [ ] 调用 LLM 生成对话摘要
-- [ ] 摘要格式标准化
-- [ ] 保存摘要到 `memory/YYYY-MM-DD-summary.md`
-
-#### Week 3: 摘要管理
-- [ ] 加载时优先读取摘要 + 最近 N 条完整消息
-- [ ] 支持摘要的层级合并（日摘要 → 周摘要 → 月摘要）
-- [ ] 添加 compaction 计数器
-
-#### Week 4: 向量记忆（可选）
-- [ ] 集成本地 embedding 模型
-- [ ] 实现语义搜索
-- [ ] 添加 `memory_search` 工具
-
-### Phase 4: 父子 Agent 记忆共享 (2周)
-
-#### Week 1: 共享机制
-- [ ] 子 Agent 继承父 Agent 的 memory 目录
-- [ ] 实现记忆注入功能
-- [ ] 子 Agent 结果自动写回
-
-#### Week 2: 优化与测试
-- [ ] 避免记忆污染（子 Agent 不修改父 Agent 的核心记忆）
-- [ ] 并发子 Agent 的记忆合并策略
-- [ ] 性能测试
-
----
-
-## 6. 关键设计决策
-
-### Q1: 摘要时机？
-**方案 A**: 实时 Compaction（到达阈值立即摘要）
-- 优点：始终控制上下文大小
-- 缺点：可能中断对话流
-
-**方案 B**: 延迟 Compaction（对话结束后批量处理）
-- 优点：不影响当前对话
-- 缺点：可能临时超出 token 限制
-
-**推荐**: 方案 B + 紧急截断（超过硬限制时强制丢弃旧消息）
-
-### Q2: 父子 Agent 记忆隔离级别？
-**方案 A**: 完全共享（子 Agent 可直接修改父记忆）
-- 风险：子 Agent 可能污染记忆
-
-**方案 B**: 只读继承 + 写回审核
-- 安全但复杂
-
-**方案 C**: 分层写入（子 Agent 写入专用区域，父 Agent 选择性合并）
-**推荐**: 方案 C
-
----
-
-## 7. 配置文件设计
+## 4. 配置汇总
 
 ```python
 # config/memory.py
 
 MEMORY_CONFIG = {
-    # Token 管理
-    "max_context_tokens": 8000,
-    "reserve_tokens": 2000,
-    "recent_rounds_keep": 10,
-    
-    # Compaction
-    "compaction": {
-        "enabled": True,
-        "threshold_tokens": 6000,  # 超过此值触发
-        "summary_model": "gpt-4o-mini",  # 用于摘要的模型
-        "min_messages_for_summary": 20,
+    # Phase 2: Token 统计（轻量版）
+    "ui": {
+        "show_token_count": True,
+        "token_count_position": "header",  # header / footer / hidden
     },
     
-    # 记忆分层
-    "memory": {
-        "short_term_days": 30,  # 短期记忆保留天数
-        "daily_log_enabled": True,
-        "vector_search_enabled": False,  # Phase 4 启用
-    },
-    
-    # 子 Agent
+    # Phase 4: 子 Agent
     "subagent": {
-        "inherit_memory": True,
-        "auto_writeback": True,
-        "context_injection": True,
-    }
+        "workspace": {
+            "base_path": "workspace/subagents",
+            "cleanup_policy": "archive",  # immediate / keep / archive
+            "keep_duration_hours": 24,
+        },
+        "context_injection": {
+            "enabled": True,
+            "default_fields": ["user_preferences", "current_project"],
+            "max_chars": 500,
+        },
+        "sandbox": {
+            "isolated": True,  # True: 禁止访问父 Agent 文件
+        },
+    },
+    
+    # Phase 5: MEMORY.md
+    "memory": {
+        "format_version": "1.0",
+        "auto_update_date": True,
+    },
+    
+    # Phase 3: Compaction（预留，暂不启用）
+    "compaction": {
+        "enabled": False,  # 默认关闭，等实际需要再开启
+        "threshold_tokens": 60000,  # 提升到 60K
+        "summary_model": "gpt-4o-mini",
+    },
 }
 ```
 
 ---
 
-## 8. 下一步行动建议
+## 5. 实施路线图
 
-### 本周（立即开始）
-1. ✅ MEMORY.md 已更新（当前日期说明）
-2. 🔄 开始 Phase 2: Token 计数实现
+### Week 1（当前）
+| 天数 | 任务 | 产出 |
+|------|------|------|
+| Day 1-2 | Token 统计 | UI 显示 token 使用量 |
+| Day 3-4 | 子 Agent workspace 隔离 | 独立目录运行 |
+| Day 5 | 上下文注入 | 子 Agent 能读取父 Agent 偏好 |
+| Day 6-7 | MEMORY.md 结构化 | 新格式 + memory_get/set 工具 |
 
-### 下周
-3. 上下文截断策略实现
-4. 设计 MEMORY.md 新格式的解析器
-
-### 后续
-5. Compaction 机制设计
-6. 父子 Agent 记忆共享原型
+### 后续（按需）
+- **Token 截断**：等用户反馈需要时
+- **Compaction**：等上下文经常超过 50K 时
+- **向量记忆**：等需要语义搜索时
 
 ---
 
-**需要我先提交这份设计文档，然后开始实现 Token 计数功能吗？**
+## 6. 下一步行动
+
+1. **确认技术选型**：
+   - Token 计数库：tiktoken（精确）vs 字符估算（简单）
+   - 子 Agent 隔离：路径限制 vs 文件权限
+
+2. **开始 Week 1 Day 1**：实现 Token 统计
+
+**需要我现在开始实现 Token 统计吗？** 还是先确认技术选型？
