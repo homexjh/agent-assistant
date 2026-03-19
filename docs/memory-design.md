@@ -5,10 +5,10 @@
 | 模块                              | 状态                     | 说明                          |
 | --------------------------------- | ------------------------ | ----------------------------- |
 | **Phase 1: 服务端会话存储** | ✅**已完成**       | 会话列表 + 消息持久化到文件   |
-| **Phase 2: Token 感知**     | ⏳**调整：仅统计** | 200K 上下文足够，先做轻量统计 |
+| **Phase 2: Token 感知**     | ✅**已完成**       | 实时显示上下文 token 使用量     |
 | **Phase 3: Compaction**     | ⏳**延后**         | 等实际需求出现再做            |
 | **MEMORY.md**               | ⚠️**基础版**     | 需要结构化升级                |
-| **父子 Agent 记忆**         | ⚠️**已部分实现** | announce 已存在，需强化隔离   |
+| **父子 Agent 记忆**         | ✅**已完成**       | Workspace 隔离 + 上下文注入   |
 
 ---
 
@@ -28,25 +28,24 @@
 
 ### Week 1: 轻量 Token 计数 + 子 Agent 隔离
 
-#### Day 1-2: Token 统计（仅展示，不截断）
+#### Day 1-2: Token 统计（仅展示，不截断） ✅ 已完成
 
 实现目标：
 
-- [ ] 集成 tiktoken 实现精确的 token 计数
-- [ ] 在 Web UI 显示当前对话的 token 使用量
-- [ ] 添加配置项：`ui.show_token_count` (默认 true)
+- [x] 实现简化 token 估算算法（中文 1.5 tokens/字，英文 1.3 tokens/词）
+- [x] 在 Web UI Header 显示当前对话的 token 使用量
+- [x] 支持状态颜色（normal/warning/danger）
 
 预期界面：
 
 ```
-[Token: 3,247 / 200,000]
+ᵀᵒᵋᵉₙꞰ 1.2K / 200K (0.6%)
 ```
 
-**不做的事**：
-
-- 不实现复杂的截断逻辑
-- 不设硬性限制
-- 不自动清理历史
+**实现细节**：
+- 新增 `aiagent/token_utils.py` 提供 token 估算功能
+- 每轮对话前发送 `token_usage` 事件更新显示
+- 支持多种模型的上下文窗口查询（kimi/gpt/claude/deepseek）
 
 #### Day 3-5: Phase 4 - 子 Agent 隔离强化
 
@@ -54,9 +53,37 @@
 
 实现目标：
 
-- [ ] 子 Agent 使用独立 workspace：`workspace/subagents/{label}/`
-- [ ] 禁止子 Agent 写入父 Agent 的 MEMORY.md
-- [ ] 上下文注入：启动时从父 Agent MEMORY.md 读取关键信息作为 task 前缀
+- [x] 子 Agent 使用独立 workspace：`workspace/subagents/{label}-{timestamp}/`
+- [x] 禁止子 Agent 写入父 Agent 的 MEMORY.md（只读复制基础配置文件）
+- [x] 上下文注入：启动时从父 Agent MEMORY.md 读取关键信息作为 task 前缀
+
+**实现细节**：
+
+```python
+# 新增文件: aiagent/subagent_workspace.py
+# 核心功能:
+- create_subagent_workspace()  # 创建隔离 workspace
+- build_context_injection()    # 构建上下文注入
+- cleanup_subagent_workspace() # 清理策略
+
+# 修改: aiagent/subagent.py
+spawn_subagent(
+    task="...",
+    label="...",
+    parent_workspace="workspace/",           # 父 Agent workspace
+    context_fields=["user_preferences", "current_project"],  # 注入字段
+    cleanup_policy="archive"                 # 清理策略
+)
+```
+
+**复制的文件**：AGENTS.md, TOOLS.md, IDENTITY.md, SOUL.md
+
+**子 Agent MEMORY.md**：仅包含系统信息，不含父 Agent 长期记忆
+
+**清理策略**：
+- `immediate` - 任务完成立即删除
+- `keep` - 保留不动  
+- `archive` (默认) - 移动到 `workspace/subagents/archive/`
 
 架构图：
 
