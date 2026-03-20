@@ -1,293 +1,264 @@
-# 记忆系统与父子 Agent 设计文档
+# 记忆系统与上下文管理设计文档
 
-## 1. 当前阶段评估
+## 版本历史
 
-| 模块                              | 状态                     | 说明                          |
-| --------------------------------- | ------------------------ | ----------------------------- |
-| **Phase 1: 服务端会话存储** | ✅**已完成**       | 会话列表 + 消息持久化到文件   |
-| **Phase 2: Token 感知**     | ✅**已完成**       | 实时显示上下文 token 使用量     |
-| **Phase 3: Compaction**     | ⏳**延后**         | 等实际需求出现再做            |
-| **MEMORY.md**               | ⚠️**基础版**     | 需要结构化升级                |
-| **父子 Agent 记忆**         | ✅**已完成**       | Workspace 隔离 + 上下文注入   |
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0 | 2026-03-18 | 初始版本，包含 Phase 1-4 规划 |
+| 1.1 | 2026-03-19 | 添加详细架构设计和原理说明 |
 
 ---
 
-## 2. 务实开发计划（调整后）
+## 1. 整体架构
 
-### 背景
+### 1.1 分层记忆架构
 
-当前模型（kimi-k2）上下文窗口为 **200K tokens**，普通对话很难触及限制：
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         用户交互层                                   │
+│                    （对话输入、文件上传、Web UI）                      │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      工作记忆 (Working Memory)                        │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  当前对话上下文 (history[])                                     │ │
+│  │  - 用户消息                                                    │ │
+│  │  - Assistant 回复                                              │ │
+│  │  │  ├── 普通文本                                               │ │
+│  │  │  ├── 推理过程 (reasoning_content)                          │ │
+│  │  │  ├── 工具调用 (tool_calls)                                 │ │
+│  │  │  └── 工具结果 (tool_result)                                │ │
+│  │  - Token 使用量：约 0-200K                                     │ │
+│  │  - 生命周期：单次对话                                          │ │
+│  │  - 存储：内存                                                  │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    │                       │
+                    ▼                       ▼
+        ┌──────────────────┐    ┌──────────────────┐
+        │   子 Agent 隔离   │    │  服务端会话存储   │
+        │  (Subagent WS)   │    │  (sessions/)     │
+        │                  │    │                  │
+        │ 临时 workspace/  │    │ 持久化历史对话   │
+        │ subagents/{id}/  │    │ - index.json     │
+        │ - 隔离运行       │    │ - sess_xxx.json  │
+        │ - 结果回传       │    │ - 跨会话检索     │
+        └──────────────────┘    └──────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      长期记忆 (Long-term Memory)                      │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  MEMORY.md - 结构化长期记忆                                    │ │
+│  │  ┌─────────────┬────────────────────────────────────────────┐ │ │
+│  │  │ System      │ current_date, version                      │ │ │
+│  │  ├─────────────┼────────────────────────────────────────────┤ │ │
+│  │  │ User Prefs  │ language, timezone, response_style         │ │ │
+│  │  ├─────────────┼────────────────────────────────────────────┤ │ │
+│  │  │ Facts       │ Project info, Personal info                │ │ │
+│  │  ├─────────────┼────────────────────────────────────────────┤ │ │
+│  │  │ Daily Summ. │ 每日对话摘要                               │ │ │
+│  │  └─────────────┴────────────────────────────────────────────┘ │ │
+│  │  - 保留：永久                                                   │ │
+│  │  - 更新：每次对话后选择性写入                                   │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-- 典型对话：~1000-3000 tokens/轮
-- 20 轮才：20K-60K tokens
-- 距离 200K 还有很大余量
+### 1.2 各层职责
 
-**结论**：Phase 2/3 的复杂截断和 compaction 机制现阶段收益有限，优先做**更紧迫、更有实际收益**的事项。
+| 层级 | 时效性 | 容量 | 存储位置 | 核心职责 |
+|------|--------|------|----------|----------|
+| **Working Memory** | 秒级 | 200K tokens | 内存 | 当前对话实时处理 |
+| **Sessions** | 天级 | GB 级 | 文件 (data/sessions/) | 近期对话持久化、检索 |
+| **Subagent WS** | 任务级 | MB 级 | 文件 (workspace/subagents/) | 子 Agent 隔离运行 |
+| **MEMORY.md** | 永久 | MB 级 | 文件 (workspace/MEMORY.md) | 核心知识、用户画像 |
 
 ---
 
-### Week 1: 轻量 Token 计数 + 子 Agent 隔离
+## 2. 详细设计
 
-#### Day 1-2: Token 统计（仅展示，不截断） ✅ 已完成
+### 2.1 工作记忆 (Working Memory)
 
-实现目标：
-
-- [x] 实现简化 token 估算算法（中文 1.5 tokens/字，英文 1.3 tokens/词）
-- [x] 在 Web UI Header 显示当前对话的 token 使用量
-- [x] 支持状态颜色（normal/warning/danger）
-
-预期界面：
-
-```
-ᵀᵒᵋᵉₙꞰ 1.2K / 200K (0.6%)
-```
-
-**实现细节**：
-- 新增 `aiagent/token_utils.py` 提供 token 估算功能
-- 每轮对话前发送 `token_usage` 事件更新显示
-- 支持多种模型的上下文窗口查询（kimi/gpt/claude/deepseek）
-
-#### Day 3-5: Phase 4 - 子 Agent 隔离强化
-
-**背景**：子 Agent 目前可以访问父 Agent 的 MEMORY.md，存在污染风险。
-
-实现目标：
-
-- [x] 子 Agent 使用独立 workspace：`workspace/subagents/{label}-{timestamp}/`
-- [x] 禁止子 Agent 写入父 Agent 的 MEMORY.md（只读复制基础配置文件）
-- [x] 上下文注入：启动时从父 Agent MEMORY.md 读取关键信息作为 task 前缀
-
-**实现细节**：
+#### 数据结构
 
 ```python
-# 新增文件: aiagent/subagent_workspace.py
-# 核心功能:
-- create_subagent_workspace()  # 创建隔离 workspace
-- build_context_injection()    # 构建上下文注入
-- cleanup_subagent_workspace() # 清理策略
-
-# 修改: aiagent/subagent.py
-spawn_subagent(
-    task="...",
-    label="...",
-    parent_workspace="workspace/",           # 父 Agent workspace
-    context_fields=["user_preferences", "current_project"],  # 注入字段
-    cleanup_policy="archive"                 # 清理策略
-)
+# 内存中的 history 数组
+history = [
+    {
+        "role": "user",
+        "content": "用户输入内容",
+        "metadata": {"timestamp": "..."}
+    },
+    {
+        "role": "assistant",
+        "content": "回复文本",
+        "metadata": {
+            "type": "reasoning",  # reasoning / final / tool_calls
+            "round": 1
+        }
+    },
+    {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [...],  # 工具调用
+        "metadata": {"type": "tool_calls"}
+    },
+    {
+        "role": "tool",
+        "content": "工具返回结果",
+        "tool_call_id": "...",
+        "name": "exec"
+    }
+]
 ```
 
-**复制的文件**：AGENTS.md, TOOLS.md, IDENTITY.md, SOUL.md
+#### 为什么放在内存
 
-**子 Agent MEMORY.md**：仅包含系统信息，不含父 Agent 长期记忆
+- **快**：纳秒级访问，不阻塞对话
+- **灵活**：可以随时修改、截断、重建
+- **临时**：对话结束后可以丢弃
 
-**清理策略**：
-- `immediate` - 任务完成立即删除
-- `keep` - 保留不动  
-- `archive` (默认) - 移动到 `workspace/subagents/archive/`
-
-架构图：
+#### 数据流转
 
 ```
-父 Agent Workspace                    子 Agent Workspace
-┌──────────────────┐                 ┌──────────────────┐
-│ MEMORY.md        │ ──注入文本──>   │ 隔离运行区       │
-│  - 用户偏好       │   (只读)        │  - result.json   │
-│  - 当前项目       │                 │  - transcript    │
-└──────────────────┘                 └──────────────────┘
-         │                                    │
-         │                                    │ announce
-         ▼                                    ▼
-    更新/合并结果 <────────────────────── 任务完成
+对话开始时：Sessions 文件 ──加载──► Working Memory (history)
+对话进行中：Working Memory ──实时保存──► Sessions 文件
+对话结束时：Working Memory ──最终保存──► Sessions 文件
 ```
-
-**API 设计**：
-
-```python
-def spawn_subagent(
-    task: str, 
-    label: str,
-    context_injection: dict = None,  # 注入的上下文字段
-    cleanup: str = "archive"  # immediate / keep / archive
-):
-    """
-    1. 读取父 Agent MEMORY.md 中 context_injection 指定的字段
-    2. 组装增强 task（前缀注入）
-    3. 在独立 workspace 启动子 Agent
-    4. 完成后通过 announce 回传结果
-    """
-```
-
-#### Day 6-7: Phase 5 - MEMORY.md 结构化（基础版）
-
-**目标**：让 Agent 能正确读取和写入结构化记忆
-
-当前格式（非结构化）：
-
-```markdown
-# Memory
-- User likes chinese
-- Project: aiagent
-```
-
-新格式（结构化）：
-
-```markdown
-# Memory
-
-## System
-- current_date: 2026-03-19
-- version: 1
-
-## User Preferences
-- language: zh-CN
-- timezone: Asia/Shanghai
-
-## Facts
-### Project: aiagent
-- repo_path: /Users/emdoor/Documents/projects/ai_pc_aiagent_os
-- current_branch: feature/todo-list-20260318
-
-## Daily Summaries
-### 2026-03-19
-- 完成服务端会话存储修复
-```
-
-实现：
-
-- [ ] 定义 MEMORY.md schema
-- [ ] 实现 `memory_get(key)` 和 `memory_set(key, value)` 工具
-- [ ] 自动更新 `System.current_date`
 
 ---
 
-### Week 2+: 后续优化（按需进行）
+### 2.2 服务端会话存储
 
-| 优先级 | 事项       | 触发条件                  |
-| ------ | ---------- | ------------------------- |
-| 中     | 上下文截断 | 用户反馈"对话太长记不住"  |
-| 中     | Compaction | 上下文经常超过 50K tokens |
-| 低     | 向量记忆   | 需要语义搜索记忆          |
+#### 存储结构
+
+```
+data/sessions/
+├── index.json              # 会话索引
+│   └── [{"id": "...", "title": "...", "updated_at": ...}]
+├── sess_xxx1.json          # 会话1完整历史
+│   └── {"id": "...", "messages": [...], "created_at": ...}
+└── sess_xxx2.json          # 会话2完整历史
+```
+
+#### 为什么需要这层
+
+1. **持久化**：服务重启后对话还在
+2. **跨会话检索**：可以查找、继续之前的对话
+3. **调试方便**：可以直接查看 JSON 文件
 
 ---
 
-## 3. 详细设计
+### 2.3 子 Agent Workspace 隔离
 
-### 3.1 父子 Agent 记忆共享方案（改良版严格隔离）
+#### 设计原则：严格隔离 + 上下文注入
 
-#### 设计原则
+**问题（隔离前）**：
+```
+父 Agent
+├── MEMORY.md (长期记忆)
+└── 子 Agent A 运行中
+    └── [可能写入 MEMORY.md，污染父 Agent 记忆]
+```
 
-**核心目标**：子 Agent 不污染父 Agent 记忆，同时能获取必要上下文
+**方案（隔离后）**：
+```
+父 Agent Workspace              子 Agent A Workspace
+├── MEMORY.md (完整)             ├── MEMORY.md (仅系统信息)
+├── AGENTS.md ──复制─────────>   ├── AGENTS.md (副本)
+├── TOOLS.md  ──复制─────────>   ├── TOOLS.md (副本)
+└── SOUL.md   ──复制─────────>   ├── SOUL.md (副本)
+                                  └── 子 Agent 只能在这里写文件
 
-**参考对比**：
+上下文注入（只读，一次性）：
+"【来自父 Agent 的上下文】
+ 【重要！工作目录】你的工作空间是 xxx
+ 所有文件必须保存到此目录下！"
+```
 
-- OpenClaw：严格隔离，子 Agent 只继承 AGENTS.md + TOOLS.md
-- 我们的方案：改良版严格隔离，允许**一次性上下文注入**
+#### 架构图
+
+```
+父 Agent                      子 Agent (隔离)
+┌────────────────┐            ┌────────────────────┐
+│ MEMORY.md      │            │ 隔离 Workspace     │
+│  - 用户偏好     │ ──注入──>  │ - AGENTS.md (副本) │
+│  - 项目信息     │  (只读)    │ - TOOLS.md (副本)  │
+└────────────────┘            │ - MEMORY.md (新)   │
+       │                       │ - result.txt       │
+       │                       └────────────────────┘
+       │                                │
+       │                                │ announce 回传
+       │                                ▼
+       └────────────────────────── 接收结果
+       (选择性合并到长期记忆)
+```
+
+#### 为什么严格隔离
+
+1. **安全性**：子 Agent 可能被攻击/误导，隔离防止污染
+2. **并行性**：多个子 Agent 同时运行互不干扰
+3. **可追溯**：每个子 Agent 的工作目录可单独检查
+4. **可清理**：任务完成后可删除/归档
 
 #### 上下文注入机制
 
 ```python
-def prepare_context_injection(fields: list[str]) -> str:
-    """从父 Agent MEMORY.md 读取指定字段，组装注入文本"""
-    memory = parse_memory_md()  # 解析结构化 MEMORY.md
-  
-    injection_parts = []
-    for field in fields:
-        if field in memory:
-            injection_parts.append(f"- {field}: {memory[field]}")
-  
-    if not injection_parts:
-        return ""
-  
-    return f"""【来自父 Agent 的上下文（只读，仅本次任务有效）】
-{chr(10).join(injection_parts)}
+# 注入内容示例
+"""
+【来自父 Agent 的上下文（仅本次任务有效）】
+
+【重要！工作目录】
+你的工作空间是：/workspace/subagents/task-20260320-xxx/
+所有文件必须保存到此目录下！
+使用 exec 工具时请加上 cwd="/workspace/subagents/task-20260320-xxx/"。
+
+【用户偏好】
+- language: zh-CN
+- timezone: Asia/Shanghai
+
+【当前项目】
+aiagent
 
 ---
 
+【你的任务】
+查询广州今天的天气...
 """
-
-def spawn_subagent(
-    task: str, 
-    label: str,
-    context_injection: list[str] = ["user_preferences", "current_project"]
-):
-    # 1. 准备注入上下文
-    injection = prepare_context_injection(context_injection)
-  
-    # 2. 组装增强任务
-    enhanced_task = injection + task
-  
-    # 3. 在独立 workspace 启动
-    run_id = sessions_spawn(
-        task=enhanced_task,
-        label=label,
-        workspace=f"workspace/subagents/{label}-{timestamp}/"
-    )
-  
-    return run_id
 ```
 
-#### 结果回传机制（已存在）
+---
 
-```python
-# subagent.py - 已存在
-def spawn_subagent(task, label):
-    def run_and_announce():
-        result = run_session(task)
-        manager.announce(run_id, result)
-  
-    threading.Thread(target=run_and_announce).start()
+### 2.4 长期记忆 (MEMORY.md)
+
+#### 当前格式（非结构化）
+
+```markdown
+# Memory
+- 用户的幸运数字是 42
+- 测试记忆条目
+- 当前系统日期：...
 ```
 
-父 Agent 处理：
+**问题**：
+- Agent 读不懂类型（这是用户偏好？还是项目信息？）
+- 无法精确读取特定字段
+- 更新困难
 
-```python
-# agent.py
-# 在对话循环中检查 announce 队列
-while True:
-    try:
-        msg = manager.announce_queue.get_nowait()
-        messages.append(msg)  # 注入子 Agent 结果
-    except Empty:
-        break
-```
-
-#### 隔离保证
-
-| 层级                 | 父 Agent   | 子 Agent                 | 控制方式   |
-| -------------------- | ---------- | ------------------------ | ---------- |
-| **文件系统**   | workspace/ | workspace/subagents/xxx/ | 物理隔离   |
-| **MEMORY.md**  | 可读写     | ❌ 不可访问              | 路径隔离   |
-| **上下文注入** | 提供       | 只读（文本）             | 一次性注入 |
-| **结果回传**   | 接收       | 写入 announce 队列       | 队列机制   |
-
-### 3.2 记忆分层架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    工作记忆 (Working Memory)                   │
-│              当前对话上下文 (~200K tokens)                      │
-│              存储：内存 (history[])                           │
-├─────────────────────────────────────────────────────────────┤
-│                    短期记忆 (Short-term Memory)                │
-│         memory/YYYY-MM-DD.md - 当天完整对话日志                │
-│         保留：7-30天（按需配置）                                │
-├─────────────────────────────────────────────────────────────┤
-│                    长期记忆 (Long-term Memory)                 │
-│  MEMORY.md - 用户偏好、重要事实、项目信息（结构化）              │
-│  memory/projects/*.md - 项目专用记忆                          │
-│  保留：永久                                                   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 3.3 MEMORY.md Schema（v1.0）
+#### 目标格式（结构化）
 
 ```markdown
 # Memory
 
 ## System
-- current_date: 2026-03-19
-- last_updated: 2026-03-19T14:30:00+08:00
-- version: 1
+- current_date: 2026-03-20
+- last_updated: 2026-03-20T14:30:00+08:00
+- version: 1.0
 
 ## User Preferences
 - language: zh-CN
@@ -302,83 +273,233 @@ while True:
 
 ### Personal
 - name: emdoor
+- lucky_number: 42
 
 ## Daily Summaries
-### 2026-03-19
-- 完成子 Agent 隔离设计
+### 2026-03-20
+- 完成子 Agent Workspace 隔离
+- 实现上下文注入机制
+```
+
+#### 结构化的好处
+
+| 能力 | 非结构化 | 结构化 |
+|------|----------|--------|
+| 精确读取 | ❌ 无法 | ✅ `memory_get("user_preferences.language")` |
+| 分类管理 | ❌ 混在一起 | ✅ System/User/Facts 分离 |
+| 自动更新 | ❌ 手动 | ✅ `memory_set("system.date", "...")` |
+| 上下文注入 | ❌ 有限 | ✅ 选择性注入特定 section |
+
+---
+
+## 3. 数据流转
+
+### 3.1 完整数据流
+
+```
+用户输入
+    │
+    ▼
+┌─────────────────────────┐
+│  工作记忆 (history)      │◄──── 当前对话上下文
+│  - 加载 Sessions 历史    │
+│  - 实时接收用户输入      │
+└─────────────────────────┘
+    │
+    ├─► LLM 处理 ──► 生成回复
+    │
+    ├─► 实时保存到 Sessions/
+    │
+    ├─► 派生子 Agent ──► 隔离 Workspace
+    │                       │
+    │                       ▼
+    │                   子 Agent 运行
+    │                       │
+    │                       ▼
+    │                   announce 回传结果
+    │                       │
+    └───────────────────────┘
+        │
+        ▼
+    对话结束
+        │
+        ├─► 保存到 Sessions/
+        │
+        └─► 选择性更新 MEMORY.md
+            (用户明确说"记住 xxx" 或检测到重要事实)
+```
+
+### 3.2 子 Agent 数据流
+
+```
+父 Agent spawn_subagent()
+    │
+    ├──► 创建隔离 Workspace
+    │       - 复制 AGENTS.md, TOOLS.md, SOUL.md
+    │       - 创建新的 MEMORY.md (仅系统信息)
+    │
+    ├──► 构建上下文注入
+    │       - 工作目录提示
+    │       - 用户偏好
+    │       - 项目信息
+    │
+    ├──► 组装增强 Task
+    │       (上下文注入 + 原始 Task)
+    │
+    └──► 在子线程中运行子 Agent
+            │
+            ▼
+        子 Agent 执行 Task
+            │
+            ├─► 使用隔离 Workspace 的工具
+            │
+            └─► 完成 ──► manager.announce(result)
+                            │
+                            ▼
+                        父 Agent 接收结果
+                            │
+                            ├─► 展示给用户
+                            │
+                            └─► 选择性更新 MEMORY.md
 ```
 
 ---
 
-## 4. 配置汇总
+## 4. 设计原则
+
+### 4.1 分层原则
+
+**快变慢存**：
+- 需要实时访问的 → Working Memory（内存）
+- 需要持久化的 → Sessions（文件）
+- 需要长期保留的 → MEMORY.md（文件）
+
+**分层的好处**：
+- 效率：不是所有信息都需要实时加载
+- 成本：长上下文成本高，分层可以截断
+- 组织：不同类型的信息有不同的生命周期
+
+### 4.2 隔离原则
+
+**严格隔离**：
+- 子 Agent 是"临时工"，完成特定任务
+- 父 Agent 是"管家"，管理长期记忆
+- 防止"临时工"把"管家"的记录本弄脏
+
+**单向数据流**：
+```
+父 Agent ──注入──► 子 Agent (只读)
+          (工作目录、用户偏好)
+          
+子 Agent ──回传──► 父 Agent (通过 announce)
+          (任务结果，父 Agent 选择性采纳)
+```
+
+### 4.3 注入原则
+
+**只读注入**：
+- 子 Agent 通过 Task 前缀获取上下文
+- 子 Agent 无法写父 Agent 的文件
+- 父 Agent 有最终决定权
+
+---
+
+## 5. 实施路线图
+
+### Phase 1: 服务端会话存储 ✅ 已完成
+- [x] 会话列表 + 消息持久化到文件
+- [x] REST API 管理会话
+- [x] 实时保存和重建
+
+### Phase 2: Token 统计 ✅ 已完成
+- [x] 简化 token 估算算法
+- [x] Web UI 显示使用量
+- [x] 多模型上下文窗口支持
+
+### Phase 3: Compaction ⏳ 延后
+- 智能上下文截断
+- LLM 摘要生成
+- 按需启动
+
+### Phase 4: 子 Agent 隔离 ✅ 已完成
+- [x] 独立 Workspace 目录
+- [x] 上下文注入机制
+- [x] 清理策略 (immediate/keep/archive)
+
+### Phase 5: MEMORY.md 结构化 🔄 规划中
+- [ ] 定义结构化 Schema
+- [ ] 实现 memory_get/memory_set 工具
+- [ ] 自动更新 System.current_date
+- [ ] 迁移现有 MEMORY.md
+
+### Phase 6: 向量记忆（可选）⏳ 规划中
+- 语义搜索记忆
+- 相关性检索
+
+---
+
+## 6. 配置文件
+
+### 记忆系统配置
 
 ```python
 # config/memory.py
 
 MEMORY_CONFIG = {
-    # Phase 2: Token 统计（轻量版）
-    "ui": {
-        "show_token_count": True,
-        "token_count_position": "header",  # header / footer / hidden
-    },
-  
-    # Phase 4: 子 Agent
+    # Working Memory
+    "max_context_tokens": 200000,
+    "reserve_tokens": 2000,
+    
+    # Sessions
+    "sessions_dir": "data/sessions",
+    "max_sessions": 100,
+    
+    # Subagent
     "subagent": {
-        "workspace": {
-            "base_path": "workspace/subagents",
-            "cleanup_policy": "archive",  # immediate / keep / archive
-            "keep_duration_hours": 24,
-        },
+        "base_path": "workspace/subagents",
+        "max_concurrent": 5,
+        "max_depth": 3,
+        "cleanup_policy": "archive",  # immediate/keep/archive
         "context_injection": {
             "enabled": True,
-            "default_fields": ["user_preferences", "current_project"],
-            "max_chars": 500,
-        },
-        "sandbox": {
-            "isolated": True,  # True: 禁止访问父 Agent 文件
+            "fields": ["user_preferences", "current_project", "system"],
+            "max_chars": 800,
         },
     },
-  
-    # Phase 5: MEMORY.md
+    
+    # Long-term Memory
     "memory": {
         "format_version": "1.0",
         "auto_update_date": True,
-    },
-  
-    # Phase 3: Compaction（预留，暂不启用）
-    "compaction": {
-        "enabled": False,  # 默认关闭，等实际需要再开启
-        "threshold_tokens": 60000,  # 提升到 60K
-        "summary_model": "gpt-4o-mini",
+        "sections": ["System", "User Preferences", "Facts", "Daily Summaries"],
     },
 }
 ```
 
 ---
 
-## 5. 实施路线图
+## 7. 附录
 
-### Week 1（当前）
+### 7.1 术语表
 
-| 天数    | 任务                    | 产出                         |
-| ------- | ----------------------- | ---------------------------- |
-| Day 1-2 | Token 统计              | UI 显示 token 使用量         |
-| Day 3-4 | 子 Agent workspace 隔离 | 独立目录运行                 |
-| Day 5   | 上下文注入              | 子 Agent 能读取父 Agent 偏好 |
-| Day 6-7 | MEMORY.md 结构化        | 新格式 + memory_get/set 工具 |
+| 术语 | 说明 |
+|------|------|
+| Working Memory | 当前对话的上下文，存储在内存中 |
+| Sessions | 持久化的对话历史，存储在文件中 |
+| Subagent WS | 子 Agent 的隔离工作目录 |
+| MEMORY.md | 长期记忆文件，结构化存储 |
+| 上下文注入 | 父 Agent 向子 Agent 传递信息的方式 |
+| announce | 子 Agent 向父 Agent 回传结果的机制 |
 
-### 后续（按需）
+### 7.2 相关文件
 
-- **Token 截断**：等用户反馈需要时
-- **Compaction**：等上下文经常超过 50K 时
-- **向量记忆**：等需要语义搜索时
-
----
-
-## 6. 下一步行动
-
-1. **确认技术选型**：
-
-   - Token 计数库：tiktoken（精确）vs 字符估算（简单）
-   - 子 Agent 隔离：路径限制 vs 文件权限
-2. **开始 Week 1 Day 1**：实现 Token 统计
+| 文件 | 职责 |
+|------|------|
+| `aiagent/memory_manager.py` | MEMORY.md 解析和管理（规划中） |
+| `aiagent/subagent_workspace.py` | 子 Agent Workspace 管理 |
+| `aiagent/subagent.py` | 子 Agent 派生和隔离逻辑 |
+| `aiagent/session_store.py` | 服务端会话存储 |
+| `aiagent/token_utils.py` | Token 估算工具 |
+| `workspace/MEMORY.md` | 长期记忆文件 |
+| `data/sessions/` | 会话存储目录 |
+| `workspace/subagents/` | 子 Agent 隔离目录 |
