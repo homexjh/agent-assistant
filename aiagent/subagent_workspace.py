@@ -3,7 +3,7 @@ subagent_workspace.py - 子 Agent Workspace 隔离管理
 
 核心功能：
   - 创建隔离的 workspace 目录
-  - 从父 Agent MEMORY.md 提取上下文注入
+  - 从父 Agent USER.md/MEMORY.md 提取安全上下文注入
   - 管理子 Agent 文件的创建和清理
 """
 from __future__ import annotations
@@ -27,32 +27,32 @@ _OPTIONAL_CONFIG_FILES = [
     "SOUL.md",
 ]
 
+# 子 Agent 上下文注入的安全字段（来自 USER.md）
+_SAFE_USER_FIELDS = {
+    "language",      # 语言，必需
+    "timezone",      # 时区，必需
+    "response_style", # 回复风格，可选
+    "code_style",    # 代码风格，可选
+    "doc_language",  # 文档语言，可选
+}
 
-def _parse_memory_for_injection(memory_path: Path) -> dict[str, Any]:
+
+def _parse_user_md(user_path: Path) -> dict[str, str]:
     """
-    从父 Agent 的 MEMORY.md 提取关键信息用于上下文注入。
+    从 USER.md 解析用户偏好。
     
-    返回结构化的上下文信息，包括：
-    - user_preferences: 用户偏好
-    - current_project: 当前项目
-    - facts: 重要事实
+    只返回安全字段（在 _SAFE_USER_FIELDS 中定义的）。
     """
-    context = {
-        "user_preferences": {},
-        "current_project": None,
-        "facts": [],
-        "system": {},
-    }
+    safe_prefs = {}
     
-    if not memory_path.exists():
-        return context
+    if not user_path.exists():
+        return safe_prefs
     
     try:
-        content = memory_path.read_text(encoding="utf-8")
+        content = user_path.read_text(encoding="utf-8")
     except Exception:
-        return context
+        return safe_prefs
     
-    # 简单的 markdown 解析，提取关键 section
     current_section = None
     
     for line in content.split("\n"):
@@ -64,27 +64,69 @@ def _parse_memory_for_injection(memory_path: Path) -> dict[str, Any]:
             current_section = section_name
             continue
         
-        # 检测 subsection (###)
-        if line.startswith("### ") and current_section == "facts":
-            subsection = line[4:].strip()
-            if subsection.startswith("Project: "):
-                context["current_project"] = subsection[9:].strip()
-            continue
-        
         # 解析列表项
-        if line.startswith("- ") and current_section:
+        if line.startswith("- ") and current_section in ("basic", "preferences"):
             item = line[2:].strip()
             if ": " in item:
                 key, value = item.split(": ", 1)
                 key = key.strip()
                 value = value.strip()
                 
-                if current_section == "user_preferences":
-                    context["user_preferences"][key] = value
-                elif current_section == "system":
+                # 只保留安全字段
+                if key in _SAFE_USER_FIELDS:
+                    safe_prefs[key] = value
+    
+    return safe_prefs
+
+
+def _parse_memory_for_injection(memory_path: Path) -> dict[str, Any]:
+    """
+    从 MEMORY.md 解析系统信息和项目背景。
+    
+    只返回非敏感信息（项目名、日期等），不返回敏感路径等。
+    """
+    context = {
+        "current_project": None,
+        "system": {},
+    }
+    
+    if not memory_path.exists():
+        return context
+    
+    try:
+        content = memory_path.read_text(encoding="utf-8")
+    except Exception:
+        return context
+    
+    current_section = None
+    
+    for line in content.split("\n"):
+        line = line.strip()
+        
+        # 检测 section 标题
+        if line.startswith("## "):
+            section_name = line[3:].strip().lower().replace(" ", "_")
+            current_section = section_name
+            continue
+        
+        # 检测 subsection（项目名）
+        if line.startswith("### ") and current_section == "facts":
+            subsection = line[4:].strip()
+            if subsection.startswith("Project: "):
+                # 只提取项目名，不提取详细路径
+                context["current_project"] = subsection[9:].strip()
+            continue
+        
+        # 解析系统信息
+        if line.startswith("- ") and current_section == "system":
+            item = line[2:].strip()
+            if ": " in item:
+                key, value = item.split(": ", 1)
+                key = key.strip()
+                value = value.strip()
+                # 只保留日期等基础信息
+                if key in ("current_date",):
                     context["system"][key] = value
-                elif current_section == "facts":
-                    context["facts"].append({key: value})
     
     return context
 
@@ -98,18 +140,27 @@ def build_context_injection(
     """
     构建上下文注入文本，作为子 Agent task 的前缀。
     
+    安全注入原则：
+    - 仅从 USER.md 读取基础偏好（language/timezone/response_style）
+    - 仅从 MEMORY.md 读取项目名和日期
+    - 绝对不注入敏感信息（用户姓名、兴趣、详细路径等）
+    
     Args:
         memory_path: 父 Agent MEMORY.md 路径
-        fields: 要注入的字段列表，默认 ["user_preferences", "current_project"]
+        fields: 已废弃，保留以兼容
         max_chars: 注入文本的最大长度
         workspace_dir: 子 Agent 的 workspace 路径，用于告知工作目录
     
     Returns:
         格式化的上下文文本，或空字符串（如果无内容）
     """
-    if fields is None:
-        fields = ["user_preferences", "current_project"]
+    # 获取 USER.md 路径（与 MEMORY.md 同目录）
+    user_path = memory_path.parent / "USER.md"
     
+    # 读取安全用户偏好
+    user_prefs = _parse_user_md(user_path)
+    
+    # 读取系统信息
     context = _parse_memory_for_injection(memory_path)
     
     parts = []
@@ -122,18 +173,25 @@ def build_context_injection(
 所有文件必须保存到此目录下！
 使用 exec 工具时请加上 cwd="{ws_path}"。""")
     
-    # 用户偏好
-    if "user_preferences" in fields and context["user_preferences"]:
-        prefs = context["user_preferences"]
-        pref_lines = [f"- {k}: {v}" for k, v in prefs.items()]
-        parts.append("【用户偏好】\n" + "\n".join(pref_lines))
+    # 用户基础偏好（只注入安全字段）
+    if user_prefs:
+        pref_lines = []
+        if "language" in user_prefs:
+            pref_lines.append(f"语言：{user_prefs['language']} (请用此语言回复)")
+        if "timezone" in user_prefs:
+            pref_lines.append(f"时区：{user_prefs['timezone']}")
+        if "response_style" in user_prefs:
+            pref_lines.append(f"回复风格：{user_prefs['response_style']}")
+        
+        if pref_lines:
+            parts.append("【用户偏好】\n" + "\n".join(pref_lines))
     
-    # 当前项目
-    if "current_project" in fields and context["current_project"]:
-        parts.append(f"【当前项目】{context['current_project']}")
+    # 项目背景（仅名称，无详细路径）
+    if context.get("current_project"):
+        parts.append(f"【当前项目背景】{context['current_project']}")
     
-    # 系统信息（当前日期等）
-    if "system" in fields and context["system"].get("current_date"):
+    # 系统信息（日期）
+    if context["system"].get("current_date"):
         parts.append(f"【当前日期】{context['system']['current_date']}")
     
     if not parts:
