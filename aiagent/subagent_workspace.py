@@ -93,6 +93,7 @@ def build_context_injection(
     memory_path: Path,
     fields: list[str] | None = None,
     max_chars: int = 500,
+    workspace_dir: Path | str | None = None,
 ) -> str:
     """
     构建上下文注入文本，作为子 Agent task 的前缀。
@@ -101,6 +102,7 @@ def build_context_injection(
         memory_path: 父 Agent MEMORY.md 路径
         fields: 要注入的字段列表，默认 ["user_preferences", "current_project"]
         max_chars: 注入文本的最大长度
+        workspace_dir: 子 Agent 的 workspace 路径，用于告知工作目录
     
     Returns:
         格式化的上下文文本，或空字符串（如果无内容）
@@ -111,6 +113,14 @@ def build_context_injection(
     context = _parse_memory_for_injection(memory_path)
     
     parts = []
+    
+    # 工作目录提示（最重要）
+    if workspace_dir:
+        ws_path = str(workspace_dir)
+        parts.append(f"""【重要！工作目录】
+你的工作空间是：{ws_path}
+所有文件必须保存到此目录下！
+使用 exec 工具时请加上 cwd="{ws_path}"。""")
     
     # 用户偏好
     if "user_preferences" in fields and context["user_preferences"]:
@@ -196,12 +206,22 @@ def create_subagent_workspace(
 
 ## System
 - note: This is a sub-agent workspace. Long-term memory is not persisted here.
+- workspace_dir: {workspace}
 - parent_workspace: {parent}
 - created_at: {timestamp}
+
+## Important Instructions
+**You MUST save all files to your workspace directory: {workspace}**
+
+When using tools:
+- Use absolute paths: {workspace}/filename
+- Or use cwd parameter: cwd="{workspace}"
+- Do NOT create files in the parent workspace or other directories
 
 ## Task Context
 Task-specific context will be provided in the conversation.
 """.format(
+        workspace=str(workspace_dir),
         parent=str(parent_ws),
         timestamp=datetime.now().isoformat(),
     ), encoding="utf-8")

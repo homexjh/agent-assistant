@@ -131,7 +131,8 @@ def spawn_subagent(
         context_injection = build_context_injection(
             memory_path=memory_path,
             fields=context_fields or ["user_preferences", "current_project", "system"],
-            max_chars=500,
+            max_chars=800,  # 增加一点长度容量以包含工作目录信息
+            workspace_dir=sub_workspace,  # 传入工作目录
         )
         # 组装增强 task
         enhanced_task = context_injection + task
