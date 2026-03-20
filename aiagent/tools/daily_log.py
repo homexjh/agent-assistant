@@ -16,8 +16,7 @@ from ..daily_log import (
     get_daily_log_path,
     list_recent_logs,
 )
-from .models import ToolDefinition
-from .base import RegisteredTool
+from .types import ToolDefinition, RegisteredTool
 
 
 # =============================================================================
@@ -35,17 +34,20 @@ async def _daily_log_create_handler(summary: str = "") -> str:
 
 daily_log_create_tool = RegisteredTool(
     definition=ToolDefinition(
-        name="daily_log_create",
-        description="创建今天的日志文件（如果不存在）",
-        parameters={
-            "type": "object",
-            "properties": {
-                "summary": {
-                    "type": "string",
-                    "description": "今天的摘要，可留空"
-                }
-            },
-            "required": []
+        type="function",
+        function={
+            "name": "daily_log_create",
+            "description": "创建今天的日志文件（如果不存在）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "今天的摘要，可留空"
+                    }
+                },
+                "required": []
+            }
         }
     ),
     handler=_daily_log_create_handler
@@ -65,23 +67,26 @@ async def _daily_log_append_handler(entry: str, section: str = "对话列表") -
 
 daily_log_append_tool = RegisteredTool(
     definition=ToolDefinition(
-        name="daily_log_append",
-        description="追加一条记录到今天的日志",
-        parameters={
-            "type": "object",
-            "properties": {
-                "entry": {
-                    "type": "string",
-                    "description": "要记录的内容"
+        type="function",
+        function={
+            "name": "daily_log_append",
+            "description": "追加一条记录到今天的日志",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entry": {
+                        "type": "string",
+                        "description": "要记录的内容"
+                    },
+                    "section": {
+                        "type": "string",
+                        "description": "目标 section，默认是'对话列表'",
+                        "enum": ["对话列表", "重要事项", "待办", "摘要"],
+                        "default": "对话列表"
+                    }
                 },
-                "section": {
-                    "type": "string",
-                    "description": "目标 section，默认是'对话列表'",
-                    "enum": ["对话列表", "重要事项", "待办", "摘要"],
-                    "default": "对话列表"
-                }
-            },
-            "required": ["entry"]
+                "required": ["entry"]
+            }
         }
     ),
     handler=_daily_log_append_handler
@@ -106,12 +111,15 @@ async def _daily_log_get_handler() -> str:
 
 daily_log_get_tool = RegisteredTool(
     definition=ToolDefinition(
-        name="daily_log_get",
-        description="读取今天的日志内容",
-        parameters={
-            "type": "object",
-            "properties": {},
-            "required": []
+        type="function",
+        function={
+            "name": "daily_log_get",
+            "description": "读取今天的日志内容",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
         }
     ),
     handler=_daily_log_get_handler
@@ -137,18 +145,21 @@ async def _daily_log_list_handler(days: int = 7) -> str:
 
 daily_log_list_tool = RegisteredTool(
     definition=ToolDefinition(
-        name="daily_log_list",
-        description="列出最近 N 天的日志文件",
-        parameters={
-            "type": "object",
-            "properties": {
-                "days": {
-                    "type": "integer",
-                    "description": "查看最近几天的日志",
-                    "default": 7
-                }
-            },
-            "required": []
+        type="function",
+        function={
+            "name": "daily_log_list",
+            "description": "列出最近 N 天的日志文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "查看最近几天的日志",
+                        "default": 7
+                    }
+                },
+                "required": []
+            }
         }
     ),
     handler=_daily_log_list_handler

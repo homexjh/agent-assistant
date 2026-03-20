@@ -244,6 +244,34 @@ class MemoryManager:
         import copy
         return copy.deepcopy(self.data)
 
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """
+        列出所有可用的键路径
+        
+        Args:
+            prefix: 键路径前缀，用于过滤
+        
+        Returns:
+            键路径列表，如 ["system.current_date", "facts.project.repo_path"]
+        """
+        keys = []
+        
+        def _collect_keys(data: dict, current_path: str = ""):
+            for key, value in data.items():
+                new_path = f"{current_path}.{key}" if current_path else key
+                
+                # 转换为小写用于路径
+                path_key = new_path.lower()
+                
+                if isinstance(value, dict) and value:
+                    _collect_keys(value, new_path)
+                else:
+                    if not prefix or path_key.startswith(prefix.lower()):
+                        keys.append(path_key)
+        
+        _collect_keys(self.data)
+        return sorted(keys)
+
 
 def get_memory_manager(workspace_dir: Path | str | None = None) -> MemoryManager:
     """
