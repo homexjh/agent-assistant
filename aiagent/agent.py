@@ -140,6 +140,85 @@ class Agent:
             # 如果创建失败，无需报错（非关键功能）
             pass
 
+    async def _auto_log_summary(self, messages: list[dict]) -> None:
+        """
+        后台任务：自动生成对话摘要并记录到日志
+        
+        触发条件：
+        - 对话轮数 > 5
+        - 有效的 user/assistant 消息 >= 2
+        """
+        try:
+            # 过滤有效对话消息
+            valid_msgs = []
+            for m in messages:
+                role = m.get("role", "")
+                content = m.get("content", "")
+                
+                # 只取 user 和 assistant 的消息，排除系统消息和工具调用
+                if role in ["user", "assistant"] and content and len(content) > 5:
+                    # 排除 reasoning 类型的内容
+                    metadata = m.get("metadata", {})
+                    if metadata.get("type") not in ["reasoning", "tool_calls"]:
+                        valid_msgs.append({"role": role, "content": content[:500]})
+            
+            # 触发条件：至少5轮有效对话
+            if len(valid_msgs) < 5:
+                return
+            
+            # 只取最近10条，控制 token
+            recent_msgs = valid_msgs[-10:]
+            
+            # 构造对话文本
+            conversation_lines = []
+            for m in recent_msgs:
+                role_display = "用户" if m["role"] == "user" else "助手"
+                # 截断过长内容
+                content = m["content"][:300]
+                conversation_lines.append(f"{role_display}: {content}")
+            
+            conversation_text = "\n".join(conversation_lines)
+            
+            # 构造 prompt
+            prompt = f"""请用一句话总结以下开发对话的核心内容（30字以内）：
+
+{conversation_text}
+
+总结："""
+            
+            # 调用 LLM 生成摘要
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+                temperature=0.3,
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            
+            # 清理输出（去掉可能的前缀）
+            for prefix in ["总结：", "摘要：", "Summary:"]:
+                if summary.startswith(prefix):
+                    summary = summary[len(prefix):].strip()
+            
+            if not summary or len(summary) < 5:
+                return
+            
+            # 获取当前时间
+            from datetime import datetime
+            time_str = datetime.now().strftime("%H:%M")
+            
+            # 记录到日志
+            from .daily_log import append_to_daily_log
+            entry = f"[{time_str}] {summary}"
+            append_to_daily_log(entry=entry, section="自动摘要")
+            
+            print(f"[auto-log] 已记录对话摘要: {summary[:50]}...")
+            
+        except Exception as e:
+            # 非关键功能，失败时静默处理
+            pass
+
     async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> dict:
         """先查 extra_tools，再走内置工具注册表。"""
         extra = self._extra_tools.get(name)
@@ -249,6 +328,11 @@ class Agent:
                 continue
 
             # 队列也空 → 任务完成
-            return msg.content or ""
+            final_content = msg.content or ""
+            
+            # 异步生成对话摘要（后台执行，不阻塞返回）
+            asyncio.create_task(self._auto_log_summary(messages))
+            
+            return final_content
 
         return "[max tool rounds reached]"
