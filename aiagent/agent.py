@@ -28,6 +28,8 @@ from .subagent_tools import (
     create_agents_list_tool,
 )
 from . import subagent_registry as registry
+from .memory_manager import MemoryManager
+from .daily_log import create_daily_log, get_daily_log_path
 
 # 最大工具调用轮次，防止死循环
 MAX_TOOL_ROUNDS = 50
@@ -55,6 +57,12 @@ class Agent:
             base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1"),
         )
         self.system_prompt = build_system_prompt(workspace_dir, skills_dir)
+        
+        # 自动更新 MEMORY.md 中的日期
+        self._update_memory_date(workspace_dir)
+        
+        # 自动创建今天的日志文件（如果不存在）
+        self._ensure_daily_log()
 
         # SubagentManager：管理子 Agent 的 announce 队列
         self.manager = SubagentManager(session_id=self.session_id)
@@ -106,6 +114,30 @@ class Agent:
                 self._agents_list_tool.definition,
             ]
         )
+
+    def _update_memory_date(self, workspace_dir: str | None) -> None:
+        """更新 MEMORY.md 中的 system.current_date为今天"""
+        from .workspace import _DEFAULT_WORKSPACE
+        ws = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
+        memory_path = ws / "MEMORY.md"
+        
+        if memory_path.exists():
+            try:
+                mm = MemoryManager(memory_path)
+                mm.update_system_date()
+            except Exception:
+                # 如果更新失败，无需报错（非关键功能）
+                pass
+
+    def _ensure_daily_log(self) -> None:
+        """确保今天的日志文件存在（如果不存在则创建）"""
+        try:
+            log_path = get_daily_log_path()
+            if not log_path.exists():
+                create_daily_log()
+        except Exception:
+            # 如果创建失败，无需报错（非关键功能）
+            pass
 
     async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> dict:
         """先查 extra_tools，再走内置工具注册表。"""

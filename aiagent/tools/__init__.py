@@ -24,13 +24,24 @@ from .exec import exec_tool
 from .file import read_tool, write_tool, edit_tool, apply_patch_tool, restore_tool
 from .process import process_tool
 from .web import web_fetch_tool, web_search_tool
-from .memory import memory_search_tool
+from .memory import (
+    memory_search_tool,
+    memory_get_tool,
+    memory_set_tool,
+    memory_list_tool,
+)
 from .image import image_tool
 from .pdf import pdf_tool
 from .tts import tts_tool
 from .browser import browser_tool
 from .cron import cron_tool
 from .git_enhanced import git_enhanced_tools
+from .daily_log import (
+    daily_log_create_tool,
+    daily_log_append_tool,
+    daily_log_get_tool,
+    daily_log_list_tool,
+)
 
 # ── 注册表 ────────────────────────────────────────────────
 _registry: dict[str, RegisteredTool] = {}
@@ -50,6 +61,13 @@ _register(process_tool)
 _register(web_fetch_tool)
 _register(web_search_tool)
 _register(memory_search_tool)
+_register(memory_get_tool)
+_register(memory_set_tool)
+_register(memory_list_tool)
+_register(daily_log_create_tool)
+_register(daily_log_append_tool)
+_register(daily_log_get_tool)
+_register(daily_log_list_tool)
 _register(image_tool)
 _register(pdf_tool)
 _register(tts_tool)
