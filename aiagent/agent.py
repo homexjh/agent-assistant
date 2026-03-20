@@ -16,6 +16,7 @@ import inspect
 import json
 import os
 import uuid
+from pathlib import Path
 from openai import AsyncOpenAI
 from .tools import get_tool_definitions, execute_tool
 from .tools.types import ToolDefinition
