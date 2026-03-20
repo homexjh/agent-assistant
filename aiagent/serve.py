@@ -624,13 +624,26 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
     session_id = str(uuid.uuid4())
     manager = SubagentManager(session_id=session_id)
 
+    # 父 Agent workspace（默认）
+    from .workspace import _DEFAULT_WORKSPACE
+    parent_workspace = _DEFAULT_WORKSPACE
+
     system_prompt = build_system_prompt()
 
-    def _agent_factory():
+    def _agent_factory(workspace_dir=None):
         from .agent import Agent
-        return Agent(model=model, api_key=api_key, base_url=base_url, depth=1)
+        return Agent(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            workspace_dir=workspace_dir or parent_workspace,
+            depth=1,
+        )
 
-    spawn_tool = create_spawn_tool(session_id, manager, _agent_factory, depth=0)
+    spawn_tool = create_spawn_tool(
+        session_id, manager, _agent_factory,
+        depth=0, parent_workspace=str(parent_workspace),
+    )
     sub_tool   = create_subagents_tool(session_id, manager)
     send_tool  = create_sessions_send_tool(session_id, manager)
     list_tool  = create_agents_list_tool(manager)
