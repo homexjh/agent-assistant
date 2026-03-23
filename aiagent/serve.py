@@ -31,6 +31,18 @@ _HTML_PATH = os.path.join(os.path.dirname(__file__), "web_ui.html")
 _active_runs: dict[str, threading.Event] = {}
 _active_lock = threading.Lock()
 
+# 全局 SessionManager 实例（每个 worker 一个）
+_session_manager = None
+
+def _get_session_manager():
+    """获取或创建 SessionManager 单例"""
+    global _session_manager
+    if _session_manager is None:
+        from .session_manager import SessionManager
+        data_dir = Path(__file__).parent.parent / "data" / "sessions"
+        _session_manager = SessionManager(data_dir)
+    return _session_manager
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -251,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
                     _run_agent(enriched_query, history, q, stop_event,
                                model=model, base_url=base_url, api_key=api_key,
                                provider_type=provider_type, deployment=deployment, api_version=api_version,
-                               images=images_for_vision)
+                               images=images_for_vision, session_id=run_id)
                 )
             except Exception as e:
                 q.put({"event": "error", "message": str(e)})
@@ -512,7 +524,8 @@ class Handler(BaseHTTPRequestHandler):
                 loop.run_until_complete(
                     _run_agent(query, history, q, stop_event,
                                model=model, base_url=base_url, api_key=api_key,
-                               provider_type=provider_type, deployment=deployment, api_version=api_version)
+                               provider_type=provider_type, deployment=deployment, api_version=api_version,
+                               session_id=run_id)
                 )
             except Exception as e:
                 q.put({"event": "error", "message": str(e)})
@@ -556,7 +569,7 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                      stop_event: threading.Event,
                      model=None, base_url=None, api_key=None,
                      provider_type='openai', deployment=None, api_version=None,
-                     images=None):
+                     images=None, session_id: str = None):
     """运行 Agent，把事件放入队列。stop_event 置位时立即中断。
     
     Args:
@@ -564,6 +577,7 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
         deployment: Azure deployment name
         api_version: Azure API version
         images: 图片列表 [{"name": str, "mime": str, "data": base64_str}]
+        session_id: 会话ID，用于消息累积和摘要生成
     """
 
     def put(**kwargs):
@@ -675,10 +689,22 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                 }
             })
         messages.append({"role": "user", "content": content})
+        user_message_content = query  # 用于 SessionManager
     else:
         messages.append({"role": "user", "content": query})
+        user_message_content = query
 
     put(event="start", model=model)
+    
+    # 使用 SessionManager 记录用户消息（如果提供了 session_id）
+    if session_id:
+        try:
+            session_mgr = _get_session_manager()
+            summary = session_mgr.add_message(session_id, "user", user_message_content)
+            if summary:
+                print(f"[session] Generated summary for {session_id}: {summary[:50]}...", flush=True)
+        except Exception as e:
+            print(f"[session] Error adding user message: {e}", flush=True)
 
     async def exec_tool(tc_id, name, arguments):
         extra = extra_tools.get(name)
@@ -804,9 +830,21 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             continue
 
         # 完成
-        put(event="done", content=msg.content or "")
+        final_content = msg.content or ""
+        put(event="done", content=final_content)
         
-        # 生成对话摘要并记录到 Daily Log
+        # 使用 SessionManager 记录助手回复（如果提供了 session_id）
+        # 这会触发超时检测，如果满足条件会生成摘要
+        if session_id:
+            try:
+                session_mgr = _get_session_manager()
+                summary = session_mgr.add_message(session_id, "assistant", final_content)
+                if summary:
+                    print(f"[session] Generated summary after assistant response: {summary[:50]}...", flush=True)
+            except Exception as e:
+                print(f"[session] Error adding assistant message: {e}", flush=True)
+        
+        # 原有的摘要生成逻辑（保留作为 fallback）
         try:
             await _generate_conversation_summary(messages, client=client, model=model)
         except Exception as e:
