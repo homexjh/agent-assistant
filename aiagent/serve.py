@@ -847,12 +847,6 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             except Exception as e:
                 print(f"[session] Error adding assistant message: {e}", flush=True)
         
-        # 原有的摘要生成逻辑（保留作为 fallback）
-        try:
-            await _generate_conversation_summary(messages, client=client, model=model)
-        except Exception as e:
-            print(f"[daily-log] Failed to generate summary: {e}", flush=True)
-        
         return
 
     put(event="done", content="[max tool rounds reached]")
