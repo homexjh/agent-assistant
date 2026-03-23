@@ -14,6 +14,7 @@ import threading
 import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from pathlib import Path
 
 from dotenv import load_dotenv
 
