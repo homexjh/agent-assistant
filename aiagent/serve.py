@@ -636,7 +636,9 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             raise ValueError("base_url is required for non-Azure providers")
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-    session_id = str(uuid.uuid4())
+    # 使用传入的 session_id，如果没有则生成新的
+    if session_id is None:
+        session_id = str(uuid.uuid4())
     manager = SubagentManager(session_id=session_id)
 
     # 父 Agent workspace（默认）
