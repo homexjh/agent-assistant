@@ -23,7 +23,7 @@ master (9fbd374)
   │     └── feature/server-session-20260318 (d5b7124)
   │           └── fix: 修复刷新后无法加载会话的问题
   │
-  └── feature/memory-struct-20260320 (aac4adc) ← 已提交 Daily Log 完整功能
+  └── feature/memory-struct-20260320 (aac4adc) ← **已合并**到 feature/todo-list-20260318
         ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档
         ├── daf1b05 docs: Add Phase 5 implementation report
         ├── 6481e2b docs: Update memory system design doc for Phase 5 completion
@@ -64,6 +64,7 @@ master (9fbd374)
 - ✅ 用户画像分离 (USER.md / MEMORY.md)
 - ✅ 子 Agent Workspace 隔离
 - ✅ SubAgent 安全上下文注入
+- ✅ **Daily Log 自动摘要** (合并自 feature/memory-struct-20260320)
 
 ---
 
@@ -100,7 +101,7 @@ master (9fbd374)
 - `docs/memory-design.md` (+97/-17) - 更新设计文档
 - `.env` (+5/-0) - 添加 DAILY_LOG_SUMMARY_MODE 配置
 
-**状态**: Daily Log 功能完整实现，**待合并**到 `feature/todo-list-20260318`
+**状态**: Daily Log 功能完整实现，**已合并**到 `feature/todo-list-20260318` (2026-03-23)
 
 **包含功能**:
 - ✅ MemoryManager 结构化读写
@@ -135,6 +136,7 @@ master (9fbd374)
 
 | 日期 | 目标分支 | 源分支 | 合并提交 | 说明 |
 |------|----------|--------|----------|------|
+| 2026-03-23 | feature/todo-list-20260318 | feature/memory-struct-20260320 | 9498bf1 | **大合并**: Daily Log 完整功能 + Skill 安全计划 |
 | 2026-03-18 | feature/todo-list-20260318 | feature/memory-week1-20260319 | 22b2a7b | 合并 Week 1 修复 |
 | 2026-03-18 | feature/todo-list-20260318 | feature/subagent-isolation-20260319 | 22b2a7b | 合并子 Agent 隔离修复 |
 | 2026-03-18 | feature/todo-list-20260318 | (多个子分支) | 22b2a7b | 大合并：用户画像分离 |
