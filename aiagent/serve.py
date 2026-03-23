@@ -805,9 +805,161 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
 
         # 完成
         put(event="done", content=msg.content or "")
+        
+        # 生成对话摘要并记录到 Daily Log
+        try:
+            await _generate_conversation_summary(messages, client=client, model=model)
+        except Exception as e:
+            print(f"[daily-log] Failed to generate summary: {e}", flush=True)
+        
         return
 
     put(event="done", content="[max tool rounds reached]")
+
+
+async def _generate_conversation_summary(messages: list[dict], client=None, model=None) -> None:
+    """
+    生成对话摘要并记录到 Daily Log
+    
+    触发条件：
+    - 有效的 user/assistant 消息 >= 5
+    
+    模式选择（通过环境变量 DAILY_LOG_SUMMARY_MODE 控制）：
+    - rule: 使用规则提取（默认，免费，速度快）
+    - llm:  使用 LLM 生成（消耗 token，质量更好）
+    """
+    from .daily_log import append_to_daily_log
+    from datetime import datetime
+    import os
+    
+    # 获取摘要模式
+    mode = os.getenv("DAILY_LOG_SUMMARY_MODE", "rule").lower()
+    
+    print(f"[daily-log-debug] _generate_conversation_summary called with {len(messages)} messages, mode={mode}", flush=True)
+    
+    # 过滤有效对话消息
+    valid_msgs = []
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        
+        if role in ["user", "assistant"] and content and len(content) > 5:
+            # 排除 reasoning 类型的内容
+            metadata = m.get("metadata", {})
+            if metadata.get("type") not in ["reasoning", "tool_calls"]:
+                valid_msgs.append({"role": role, "content": content[:500]})
+    
+    print(f"[daily-log-debug] Valid messages: {len(valid_msgs)} (need >= 5)", flush=True)
+    
+    # 触发条件：至少5轮有效对话
+    if len(valid_msgs) < 5:
+        print(f"[daily-log-debug] Not enough valid messages, returning", flush=True)
+        return
+    
+    # 只取最近10条，控制 token
+    recent_msgs = valid_msgs[-10:]
+    
+    try:
+        # 根据模式选择摘要生成方式
+        if mode == "llm" and client and model:
+            # LLM 模式：使用 AI 生成摘要
+            summary = await _generate_summary_with_llm(recent_msgs, client, model)
+        else:
+            # Rule 模式：使用规则提取（默认）
+            summary = _generate_summary_with_rule(valid_msgs)
+        
+        # 获取当前时间
+        time_str = datetime.now().strftime("%H:%M")
+        entry = f"[{time_str}] {summary}"
+        
+        # 记录到日志
+        from .daily_log import get_daily_log_path
+        log_path = get_daily_log_path()
+        print(f"[daily-log-debug] Writing to: {log_path}", flush=True)
+        
+        result = append_to_daily_log(entry=entry, section="自动摘要")
+        print(f"[daily-log] Summary recorded ({mode}): {result}, entry: {entry}", flush=True)
+        
+    except Exception as e:
+        print(f"[daily-log] Error generating summary: {e}", flush=True)
+
+
+def _generate_summary_with_rule(valid_msgs: list[dict]) -> str:
+    """使用规则提取摘要（免费、快速）"""
+    # 取最后一条用户消息作为摘要
+    last_user_msg = None
+    for m in reversed(valid_msgs):
+        if m["role"] == "user":
+            last_user_msg = m["content"][:50]
+            break
+    
+    # 统计用户消息数量
+    user_count = sum(1 for m in valid_msgs if m["role"] == "user")
+    
+    if last_user_msg:
+        if user_count >= 10:
+            return f"深入讨论: {last_user_msg}..."
+        elif user_count >= 5:
+            return f"对话: {last_user_msg}..."
+        else:
+            return f"询问: {last_user_msg}..."
+    else:
+        return "对话完成"
+
+
+async def _generate_summary_with_llm(recent_msgs: list[dict], client, model: str) -> str:
+    """使用 LLM 生成摘要（消耗 token，质量更好）"""
+    # 构造对话文本
+    conversation_lines = []
+    for m in recent_msgs:
+        role_display = "用户" if m["role"] == "user" else "助手"
+        content = m["content"][:300]
+        conversation_lines.append(f"{role_display}: {content}")
+    
+    conversation_text = "\n".join(conversation_lines)
+    
+    prompt = f"""请用一句话总结以下对话的核心内容（30字以内）：
+
+{conversation_text}
+
+总结："""
+    
+    try:
+        # 某些模型（如 kimi-k2.5）可能不支持 temperature，尝试不带 temperature 调用
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.3,
+            )
+        except Exception as e:
+            if "temperature" in str(e).lower():
+                # 如果不支持 temperature，重试不带该参数
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=50,
+                )
+            else:
+                raise
+        
+        summary = response.choices[0].message.content.strip()
+        
+        # 清理前缀
+        for prefix in ["总结：", "摘要：", "Summary:", "总结："]:
+            if summary.startswith(prefix):
+                summary = summary[len(prefix):].strip()
+        
+        if summary and len(summary) >= 5:
+            return summary[:50]  # 限制长度
+        else:
+            # 如果 LLM 返回空或太短，fallback 到 rule 模式
+            return _generate_summary_with_rule(recent_msgs)
+            
+    except Exception as e:
+        print(f"[daily-log] LLM summary failed: {e}, fallback to rule mode", flush=True)
+        return _generate_summary_with_rule(recent_msgs)
 
 
 def _img_b64(path: str) -> str | None:

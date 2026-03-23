@@ -16,6 +16,7 @@ import inspect
 import json
 import os
 import uuid
+from pathlib import Path
 from openai import AsyncOpenAI
 from .tools import get_tool_definitions, execute_tool
 from .tools.types import ToolDefinition
@@ -28,6 +29,8 @@ from .subagent_tools import (
     create_agents_list_tool,
 )
 from . import subagent_registry as registry
+from .memory_manager import MemoryManager
+from .daily_log import create_daily_log, get_daily_log_path
 
 # 最大工具调用轮次，防止死循环
 MAX_TOOL_ROUNDS = 50
@@ -45,16 +48,27 @@ class Agent:
         session_id: str | None = None,
         run_id: str | None = None,   # 子 Agent 用，用于轮询 steer 队列
     ):
-        self.model = model or os.getenv("MODEL", "kimi-k2-0711-preview")
+        # 支持多种环境变量名（兼容不同配置习惯）
+        self.model = model or os.getenv("MODEL") or os.getenv("DEFAULT_MODEL") or "kimi-k2-0711-preview"
         self.depth = depth
         self.session_id = session_id or str(uuid.uuid4())
         self.run_id = run_id  # None 表示顶层 Agent
 
+        # API 配置：优先使用传入参数，其次尝试多种环境变量名
+        _api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("KIMI_API_KEY") or ""
+        _base_url = base_url or os.getenv("OPENAI_BASE_URL") or os.getenv("KIMI_BASE_URL") or "https://api.moonshot.cn/v1"
+        
         self.client = AsyncOpenAI(
-            api_key=api_key or os.getenv("OPENAI_API_KEY", ""),
-            base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1"),
+            api_key=_api_key,
+            base_url=_base_url,
         )
         self.system_prompt = build_system_prompt(workspace_dir, skills_dir)
+        
+        # 自动更新 MEMORY.md 中的日期
+        self._update_memory_date(workspace_dir)
+        
+        # 自动创建今天的日志文件（如果不存在）
+        self._ensure_daily_log()
 
         # SubagentManager：管理子 Agent 的 announce 队列
         self.manager = SubagentManager(session_id=self.session_id)
@@ -106,6 +120,138 @@ class Agent:
                 self._agents_list_tool.definition,
             ]
         )
+
+    def _update_memory_date(self, workspace_dir: str | None) -> None:
+        """更新 MEMORY.md 中的 system.current_date为今天"""
+        from .workspace import _DEFAULT_WORKSPACE
+        ws = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
+        memory_path = ws / "MEMORY.md"
+        
+        if memory_path.exists():
+            try:
+                mm = MemoryManager(memory_path)
+                mm.update_system_date()
+            except Exception:
+                # 如果更新失败，无需报错（非关键功能）
+                pass
+
+    def _ensure_daily_log(self) -> None:
+        """确保今天的日志文件存在（如果不存在则创建）"""
+        try:
+            log_path = get_daily_log_path()
+            if not log_path.exists():
+                create_daily_log()
+        except Exception:
+            # 如果创建失败，无需报错（非关键功能）
+            pass
+
+    async def _auto_log_summary(self, messages: list[dict]) -> None:
+        """
+        后台任务：自动生成对话摘要并记录到日志
+        
+        触发条件：
+        - 对话轮数 > 5
+        - 有效的 user/assistant 消息 >= 2
+        """
+        start_msg = f"[auto-log-debug] _auto_log_summary started with {len(messages)} messages"
+        print(start_msg, flush=True)
+        
+        # 写入文件确保能看到
+        try:
+            from pathlib import Path
+            Path("/tmp/summary-debug.log").write_text(start_msg + "\n", encoding="utf-8")
+        except:
+            pass
+        
+        # 使用 print 代替 logging，因为 Server 中 logging 可能未配置
+        def log(msg):
+            line = f"[auto-log] {msg}"
+            print(line, flush=True)
+            # 追加到文件
+            try:
+                from pathlib import Path
+                Path("/tmp/summary-debug.log").write_text(line + "\n", encoding="utf-8")
+            except:
+                pass
+        
+        try:
+            # 过滤有效对话消息
+            valid_msgs = []
+            for m in messages:
+                role = m.get("role", "")
+                content = m.get("content", "")
+                
+                # 只取 user 和 assistant 的消息，排除系统消息和工具调用
+                if role in ["user", "assistant"] and content and len(content) >= 3:
+                    # 排除 reasoning 类型的内容
+                    metadata = m.get("metadata", {})
+                    if metadata.get("type") not in ["reasoning", "tool_calls"]:
+                        valid_msgs.append({"role": role, "content": content[:500]})
+            
+            log(f"Total messages: {len(messages)}, Valid: {len(valid_msgs)}")
+            
+            # 触发条件：至少5轮有效对话
+            if len(valid_msgs) < 5:
+                log(f"Not enough valid messages ({len(valid_msgs)} < 5), skipping")
+                return
+            
+            # 只取最近10条，控制 token
+            recent_msgs = valid_msgs[-10:]
+            
+            # 构造对话文本
+            conversation_lines = []
+            for m in recent_msgs:
+                role_display = "用户" if m["role"] == "user" else "助手"
+                # 截断过长内容
+                content = m["content"][:300]
+                conversation_lines.append(f"{role_display}: {content}")
+            
+            conversation_text = "\n".join(conversation_lines)
+            
+            # 构造 prompt
+            prompt = f"""请用一句话总结以下开发对话的核心内容（30字以内）：
+
+{conversation_text}
+
+总结："""
+            
+            # 调用 LLM 生成摘要
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+                temperature=0.3,
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            log(f"Generated summary: {summary[:50]}...")
+            
+            # 清理输出（去掉可能的前缀）
+            for prefix in ["总结：", "摘要：", "Summary:"]:
+                if summary.startswith(prefix):
+                    summary = summary[len(prefix):].strip()
+            
+            if not summary or len(summary) < 5:
+                log(f"Summary too short, skipping")
+                return
+            
+            # 获取当前时间
+            from datetime import datetime
+            time_str = datetime.now().strftime("%H:%M")
+            
+            # 记录到日志
+            from .daily_log import append_to_daily_log
+            entry = f"[{time_str}] {summary}"
+            result = append_to_daily_log(entry=entry, section="自动摘要")
+            
+            log(f"Append result: {result}, entry: {entry[:50]}...")
+            print(f"[auto-log] 已记录对话摘要: {summary[:50]}...")
+            
+        except Exception as e:
+            # 非关键功能，失败时记录日志但不阻断主流程
+            import traceback
+            log(f"Error: {e}")
+            log(traceback.format_exc())
 
     async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> dict:
         """先查 extra_tools，再走内置工具注册表。"""
@@ -216,6 +362,33 @@ class Agent:
                 continue
 
             # 队列也空 → 任务完成
-            return msg.content or ""
+            final_content = msg.content or ""
+            
+            # 生成对话摘要并记录（在返回前完成）
+            # 这是在对话完成后执行的，不会阻塞用户响应时间
+            debug_msg = f"[auto-log-debug] About to call _auto_log_summary with {len(messages)} messages\n"
+            print(debug_msg, flush=True)
+            
+            # 同时写入文件（确保能看到）
+            try:
+                from pathlib import Path
+                Path("/tmp/agent-debug.log").write_text(debug_msg, encoding="utf-8")
+            except:
+                pass
+            
+            try:
+                await self._auto_log_summary(messages.copy())
+            except Exception as e:
+                import traceback
+                err_msg = f"[auto-log] Failed to generate summary: {e}\n{traceback.format_exc()}"
+                print(err_msg, flush=True)
+                # 写入错误日志
+                try:
+                    from pathlib import Path
+                    Path("/tmp/agent-error.log").write_text(err_msg, encoding="utf-8")
+                except:
+                    pass
+            
+            return final_content
 
         return "[max tool rounds reached]"

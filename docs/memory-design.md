@@ -6,6 +6,7 @@
 |------|------|------|
 | 1.0 | 2026-03-18 | 初始版本，包含 Phase 1-5 规划 |
 | 1.1 | 2026-03-20 | 添加详细架构设计、OpenClaw 参考、实施计划 |
+| 2.0 | 2026-03-20 | **Phase 5 完成**：USER.md 分离、MemoryManager、每日日志、自动摘要 |
 
 ---
 
@@ -264,24 +265,24 @@ When using tools:
 - [x] 上下文注入机制
 - [x] 清理策略 (immediate/keep/archive)
 
-### Phase 5: 记忆系统完善 🔄 进行中
+### Phase 5: 记忆系统完善 ✅ 已完成
 
-#### Week 1: 文件结构调整
-- [ ] **新增 USER.md**：从现有 MEMORY.md 分离用户画像
-- [ ] **修复上下文注入**：只注入安全字段（language/timezone/style）
-- [ ] **更新加载逻辑**：主 Agent 加载 USER.md + MEMORY.md
+#### Week 1: 文件结构调整 ✅
+- [x] **新增 USER.md**：从现有 MEMORY.md 分离用户画像
+- [x] **修复上下文注入**：只注入安全字段（language/timezone/style）
+- [x] **更新加载逻辑**：主 Agent 加载 USER.md + MEMORY.md
 
-#### Week 2: MEMORY.md 结构化
-- [ ] **创建 memory_manager.py**：解析/写入结构化 Markdown
-- [ ] **实现 memory_get(key)**：支持点号路径，如 `facts.project.repo_path`
-- [ ] **实现 memory_set(key, value)**：自动创建 section
-- [ ] **自动日期更新**：每次对话更新 `System.current_date`
-- [ ] **迁移脚本**：将现有 MEMORY.md 转换为新格式
+#### Week 2: MEMORY.md 结构化 ✅
+- [x] **创建 memory_manager.py**：解析/写入结构化 Markdown，支持点号路径
+- [x] **实现 memory_get/set/list 工具**：LLM 可通过点号路径读写 MEMORY.md
+- [x] **自动日期更新**：Agent 启动时自动更新 `System.current_date`
+- [x] **新增 daily_log.py**：每日日志管理（创建/追加/读取）
 
-#### Week 3: 每日日志（可选）
-- [ ] **创建 memory/ 目录**：按日期存储对话摘要
-- [ ] **自动记录**：每天第一次对话时创建 `memory/YYYY-MM-DD.md`
-- [ ] **手动触发**：支持 `/remember` 命令保存重要信息
+#### Week 3: 每日日志与自动摘要 ✅
+- [x] **创建 memory/ 目录**：按日期存储对话记录
+- [x] **自动创建日志**：Agent 启动时自动创建 `memory/YYYY-MM-DD.md`
+- [x] **自动对话摘要**：长对话（>5轮）结束后，后台调用 LLM 生成一句话摘要
+- [x] **daily_log 工具集**：`daily_log_create/append/get/list` 供 LLM 调用
 
 ### Phase 6: 向量记忆（按需）⏳ 未计划
 - [ ] LanceDB 向量存储
@@ -404,9 +405,10 @@ MEMORY_CONFIG = {
 | OpenClaw 实践 | 我们的实现 |
 |--------------|-----------|
 | AGENTS.md / TOOLS.md / SOUL.md 分离 | ✅ 已有 |
-| USER.md 仅主 Agent 可见 | ✅ 新增 |
-| MEMORY.md 永不暴露给子 Agent | ✅ 修复注入策略 |
-| memory/ 每日日志目录 | ⚠️ Phase 5 Week 3 |
+| USER.md 仅主 Agent 可见 | ✅ Phase 5 Week 1 |
+| MEMORY.md 永不暴露给子 Agent | ✅ Phase 5 Week 1 修复注入策略 |
+| memory/ 每日日志目录 | ✅ Phase 5 Week 3 |
+| 自动对话摘要 | ✅ Phase 5 Week 3 新增（长对话>5轮自动触发） |
 | checklists/ 高风险操作清单 | ❌ 暂不需要 |
 
 ### 7.2 我们不做的
@@ -470,9 +472,56 @@ MEMORY_CONFIG = {
 
 | 文件 | 职责 |
 |------|------|
-| `aiagent/memory_manager.py` | 核心解析/写入逻辑（新增） |
-| `aiagent/tools/memory.py` | memory_get/memory_set 工具（新增） |
-| `aiagent/subagent_workspace.py` | 子 Agent Workspace 管理 |
-| `workspace/USER.md` | 用户画像（新增） |
-| `workspace/MEMORY.md` | 项目信息（改造） |
-| `workspace/memory/` | 每日日志目录（新增） |
+| `aiagent/memory_manager.py` | MemoryManager 类，解析/写入结构化 Markdown ✅ |
+| `aiagent/daily_log.py` | 每日日志管理（创建/追加/读取/归档）✅ |
+| `aiagent/tools/memory.py` | memory_get/memory_set/memory_list 工具 ✅ |
+| `aiagent/tools/daily_log.py` | daily_log_create/append/get/list 工具 ✅ |
+| `aiagent/agent.py` | 自动更新日期、自动创建日志、自动对话摘要 ✅ |
+| `aiagent/subagent_workspace.py` | 子 Agent Workspace 管理与安全上下文注入 |
+| `workspace/USER.md` | 用户画像（仅主 Agent 可见）✅ |
+| `workspace/MEMORY.md` | 项目信息（结构化）✅ |
+| `workspace/memory/` | 每日日志目录（自动创建）✅ |
+
+### 8.4 新增工具列表
+
+**Memory 工具**（结构化读写 MEMORY.md/USER.md）：
+| 工具 | 功能 | 示例 |
+|------|------|------|
+| `memory_get` | 点号路径读取 | `memory_get(key="facts.project.repo_path")` |
+| `memory_set` | 点号路径写入 | `memory_set(key="facts.new.key", value="xxx")` |
+| `memory_list` | 列出所有内容 | `memory_list()` |
+| `memory_search` | 全文搜索 | `memory_search(action="search", query="xxx")` |
+
+**Daily Log 工具**（每日日志管理）：
+| 工具 | 功能 | 示例 |
+|------|------|------|
+| `daily_log_create` | 创建今日日志 | `daily_log_create(summary="...")` |
+| `daily_log_append` | 追加记录 | `daily_log_append(entry="...", section="自动摘要")` |
+| `daily_log_get` | 读取今日日志 | `daily_log_get()` |
+| `daily_log_list` | 列出最近日志 | `daily_log_list(days=7)` |
+
+### 8.5 自动对话摘要机制
+
+**触发条件**：
+- 有效对话轮数 > 5（user + assistant 消息）
+- 后台异步执行（不阻塞用户响应）
+
+**实现流程**：
+```
+对话结束 → _auto_log_summary() 后台任务
+    ↓
+过滤最近 10 条有效消息（排除 reasoning、工具调用）
+    ↓
+构造 Prompt → 调用 LLM（当前模型，temperature=0.3）
+    ↓
+生成一句话摘要（30字内）
+    ↓
+记录到 workspace/memory/YYYY-MM-DD.md 的「自动摘要」section
+```
+
+**日志格式**：
+```markdown
+## 自动摘要
+- [14:32] 修复了 agent.py 的 Path 导入错误
+- [15:10] 讨论了数据库性能优化方案，建议使用索引
+```
