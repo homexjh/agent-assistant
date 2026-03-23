@@ -1064,12 +1064,15 @@ async function send() {
   append('user', { content: userContent });
 
   setRunning(true);
-  curRunId = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  // 使用会话ID(sid)作为请求ID，支持消息累积和会话级别摘要
+  // curRunId仅用于停止任务，不用于消息累积
+  curRunId = sid;  // 复用会话ID，确保消息累积到同一会话
 
   const prov = PROVIDERS[selProvider];
   
   console.log(`[send] Provider: ${selProvider}, Model: ${selModel}`);
   console.log(`[send] Files: ${attachedFiles.length}`);
+  console.log(`[send] Session ID: ${sid}`);
   
   // 构建请求体
   const requestBody = {
