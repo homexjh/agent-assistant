@@ -1,7 +1,7 @@
 # 分支历史与提交记录
 
 > 记录项目所有分支的创建、合并、提交历史
-> 最后更新: 2026-03-22
+> 最后更新: 2026-03-23
 
 ---
 
@@ -23,7 +23,8 @@ master (9fbd374)
   │     └── feature/server-session-20260318 (d5b7124)
   │           └── fix: 修复刷新后无法加载会话的问题
   │
-  └── feature/memory-struct-20260320 (daf1b05) ← 未合并到主分支
+  └── feature/memory-struct-20260320 (aac4adc) ← 已提交 Daily Log 完整功能
+        ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档
         ├── daf1b05 docs: Add Phase 5 implementation report
         ├── 6481e2b docs: Update memory system design doc for Phase 5 completion
         ├── 21c7d0c feat: Auto-generate conversation summary for long dialogues (>5 rounds)
@@ -66,12 +67,13 @@ master (9fbd374)
 
 ---
 
-### feature/memory-struct-20260320 (Phase 5 完整实现)
+### feature/memory-struct-20260320 (Phase 5 完整实现 + Daily Log 优化)
 
 基于: `feature/todo-list-20260318` (22b2a7b)
 
 | 提交 | 日期 | 作者 | 类型 | 说明 | 主要变更 |
 |------|------|------|------|------|----------|
+| aac4adc | 2026-03-23 | emdoor | feat | **Daily Log 自动摘要功能完整实现** | `aiagent/serve.py` (+250 行), `docs/` (+800 行) |
 | daf1b05 | 2026-03-20 | emdoor | docs | Add Phase 5 implementation report | `PHASE5_IMPLEMENTATION_REPORT.md` (+146 行) |
 | 6481e2b | 2026-03-20 | emdoor | docs | Update memory system design doc | `docs/memory-design.md` (+97/-17) |
 | 21c7d0c | 2026-03-20 | emdoor | feat | Auto-generate conversation summary | `aiagent/agent.py` (摘要生成逻辑) |
@@ -85,15 +87,20 @@ master (9fbd374)
 - `aiagent/tools/daily_log.py` (175 行) - Daily Log 工具
 - `MEMORY_SYSTEM_USAGE.md` (172 行) - 使用文档
 - `PHASE5_IMPLEMENTATION_REPORT.md` (146 行) - 实施报告
+- `PHASE5_WEEK4_SKILL_SECURITY_PLAN.md` (200+ 行) - Skill 安全计划
+- `BRANCH_HISTORY.md` (300+ 行) - 分支历史记录
 - `test_memory_system.py` (239 行) - 测试文件
 
 **修改文件**:
 - `aiagent/agent.py` (+119/-17) - 集成 Memory 和 Daily Log
+- `aiagent/serve.py` (+250/-50) - 添加 _generate_conversation_summary
+- `aiagent/memory_manager.py` (+1/-0) - 修复 update_system_date 保存问题
 - `aiagent/tools/__init__.py` (+20/-3) - 注册新工具
 - `aiagent/tools/memory.py` (+312/-26) - 扩展 Memory 工具
 - `docs/memory-design.md` (+97/-17) - 更新设计文档
+- `.env` (+5/-0) - 添加 DAILY_LOG_SUMMARY_MODE 配置
 
-**状态**: Phase 5 Week 1-3 完成，**未合并**到 `feature/todo-list-20260318`
+**状态**: Daily Log 功能完整实现，**待合并**到 `feature/todo-list-20260318`
 
 **包含功能**:
 - ✅ MemoryManager 结构化读写
