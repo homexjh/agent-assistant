@@ -191,6 +191,13 @@ class SessionManager:
         if session_file.exists():
             try:
                 data = json.loads(session_file.read_text(encoding="utf-8"))
+                
+                # 兼容现有会话文件格式（created_at 可能是时间戳整数）
+                created_at = data.get("created_at")
+                if isinstance(created_at, int):
+                    # 转换时间戳为 ISO 字符串
+                    data["created_at"] = datetime.fromtimestamp(created_at / 1000).isoformat()
+                
                 # 确保新字段存在（兼容旧会话文件）
                 if "last_summary_at" not in data:
                     data["last_summary_at"] = None
@@ -198,6 +205,12 @@ class SessionManager:
                     data["summaries"] = []
                 if "last_active" not in data:
                     data["last_active"] = data.get("created_at", datetime.now().isoformat())
+                
+                # 为现有消息添加时间戳（如果没有）
+                for msg in data.get("messages", []):
+                    if "timestamp" not in msg:
+                        msg["timestamp"] = data.get("created_at", datetime.now().isoformat())
+                
                 return data
             except Exception as e:
                 print(f"[session] Error loading session {session_id}: {e}", flush=True)
