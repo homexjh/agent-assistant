@@ -10,7 +10,7 @@
 ```
 master (9fbd374)
   │
-  ├── feature/todo-list-20260318 (22b2a7b) ← 当前主开发分支
+  ├── feature/todo-list-20260318 (db24233) ← 当前主开发分支
   │     │
   │     ├── merge: 用户画像分离与安全上下文注入 (22b2a7b)
   │     │
@@ -20,8 +20,13 @@ master (9fbd374)
   │     ├── feature/subagent-isolation-20260319 (2287b9c)
   │     │     └── fix: 子 Agent 文件创建到错误目录的问题
   │     │
-  │     └── feature/server-session-20260318 (d5b7124)
-  │           └── fix: 修复刷新后无法加载会话的问题
+  │     ├── feature/server-session-20260318 (d5b7124)
+  │     │     └── fix: 修复刷新后无法加载会话的问题
+  │     │
+  │     └── feature/session-level-summary-20260323 (0d6279e) ← 会话级别摘要（开发中）
+  │           ├── fix: 删除旧的请求级别摘要逻辑
+  │           ├── fix: 前端使用 sid 作为 rid
+  │           └── feat: 实现 SessionManager 会话级别摘要
   │
   └── feature/memory-struct-20260320 (aac4adc) ← **已合并**到 feature/todo-list-20260318
         ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档
@@ -129,6 +134,19 @@ master (9fbd374)
 - **合并到**: `feature/todo-list-20260318`
 - **提交**: d5b7124 fix: 修复刷新后无法加载会话的问题，添加缺失的 scrollToBottom 函数
 - **状态**: 已合并，可删除
+
+#### feature/session-level-summary-20260323
+- **基于**: `feature/todo-list-20260318`
+- **目的**: 实现会话级别 Daily Log 总结（方案B）
+- **主要提交**:
+  - `0d6279e` fix: 删除旧的请求级别摘要逻辑
+  - `9e41d18` fix: 前端使用 sid 作为 rid
+  - `9f2b740` fix: datetime 作用域问题
+  - `2b385f2` fix: session_id 被覆盖
+  - `a582fe2` fix: Path 未导入
+  - `b08a06f` feat: 实现 SessionManager
+- **Bug 修复**: 6个（详见 SESSION_SUMMARY_IMPLEMENTATION_REPORT.md）
+- **状态**: 已实现并测试通过，待合并
 
 ---
 
