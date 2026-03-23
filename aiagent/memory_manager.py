@@ -181,6 +181,7 @@ class MemoryManager:
         if current != today:
             self.set("system.current_date", today)
             self.set("system.last_updated", datetime.now().isoformat())
+            self.save()  # 保存到文件
             return True
         return False
     
