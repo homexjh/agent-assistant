@@ -186,28 +186,29 @@ master (9fbd374)
 
 ---
 
-## 🎯 下一步计划
+## 🎯 当前状态
 
-### 方案 A: 合并后继续（推荐）
+### 正在开发：Phase 5 - Skill 安全分层
 
-```bash
-# 1. 合并 memory-struct 到主分支
-git checkout feature/todo-list-20260318
-git merge feature/memory-struct-20260320
+**分支**: `feature/skill-security-tier-20260324`
 
-# 2. 创建 Skill 安全分支
-git checkout -b feature/skill-security-20260322
-```
+**基于**: `feature/todo-list-20260318` (已包含 Daily Log + Memory + Session)
 
-**预期**: `feature/todo-list-20260318` 将包含所有 Phase 5 功能
+**实施内容** (参考 PHASE5_IMPLEMENTATION_PLAN.md):
+- Phase 1: 目录结构调整 (skills/{system,user,market}/)
+- Phase 2: 安全扫描器 (skill_security.py)
+- Phase 3: 扫描逻辑更新 (skills.py 支持三级目录)
 
-### 方案 B: 独立开发
+**待完成**:
+- [ ] 目录结构调整
+- [ ] skill_security.py 实现
+- [ ] skills.py 三级扫描支持
+- [ ] research skill 创建
+- [ ] find-skills skill 创建
 
-```bash
-# 从当前分支创建，不合并
-git checkout feature/memory-struct-20260320
-git checkout -b feature/skill-security-20260322
-```
+---
+
+## 🎯 历史合并记录
 
 ---
 
