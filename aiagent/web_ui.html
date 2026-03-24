@@ -130,6 +130,29 @@
   .skill-trust-badge.user { background: rgba(108, 142, 255, 0.15); color: var(--accent); }
   .skill-trust-badge.market { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
   .skills-empty { text-align: center; padding: 20px; color: var(--text3); font-size: 12px; }
+  .skills-empty-hint { margin-top: 8px; font-size: 11px; color: var(--text2); }
+  .skills-actions {
+    display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .skills-btn {
+    flex: 1; padding: 8px 12px; background: var(--bg3);
+    border: 1px solid var(--border); border-radius: var(--rs);
+    color: var(--text); font-size: 12px; cursor: pointer;
+    transition: all .2s; text-align: center;
+  }
+  .skills-btn:hover { border-color: var(--accent); background: rgba(108,142,255,0.1); }
+  .skills-btn.primary { background: rgba(108,142,255,0.2); border-color: rgba(108,142,255,0.4); }
+  .skills-btn.primary:hover { background: rgba(108,142,255,0.3); }
+  .skill-create-hint {
+    padding: 12px; margin: 8px 0;
+    background: rgba(108,142,255,0.05); border: 1px dashed rgba(108,142,255,0.3);
+    border-radius: var(--rs); font-size: 11px; color: var(--text2);
+  }
+  .skill-create-hint code {
+    background: var(--bg3); padding: 2px 6px; border-radius: 4px;
+    font-family: monospace; color: var(--accent);
+  }
   .todo-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 12px 14px; border-bottom: 1px solid var(--border);
@@ -357,6 +380,10 @@
     </div>
     <div class="skills-content" id="skillsContent">
       <div class="skills-loading">加载中...</div>
+    </div>
+    <div class="skills-actions">
+      <button class="skills-btn" onclick="createNewSkill()">＋ 创建技能</button>
+      <button class="skills-btn primary" onclick="browseSkillMarket()">🌐 浏览市场</button>
     </div>
   </div>
 </header>
@@ -1831,17 +1858,45 @@ function renderSkills(skills) {
   const contentEl = document.getElementById('skillsContent');
   
   const categories = {
-    system: { title: '📦 System Skills', class: 'system', desc: '系统内置，完全信任' },
-    user: { title: '👤 User Skills', class: 'user', desc: '用户创建，基本信任' },
-    market: { title: '🌐 Market Skills', class: 'market', desc: '外部下载，需安全检查' },
-    legacy: { title: '⚠️ Legacy Skills', class: '', desc: '遗留兼容' }
+    system: { 
+      title: '📦 System Skills', 
+      class: 'system', 
+      desc: '系统内置，完全信任',
+      emptyHint: '系统技能由官方提供，开箱即用'
+    },
+    user: { 
+      title: '👤 User Skills', 
+      class: 'user', 
+      desc: '用户创建，基本信任',
+      emptyHint: '暂无用户技能。点击底部"创建技能"按钮创建自己的技能',
+      showCreateHint: true
+    },
+    market: { 
+      title: '🌐 Market Skills', 
+      class: 'market', 
+      desc: '外部下载，需安全检查',
+      emptyHint: '暂无外部技能。点击底部"浏览市场"按钮查找安装',
+      showMarketHint: true
+    },
+    legacy: { 
+      title: '⚠️ Legacy Skills', 
+      class: '', 
+      desc: '遗留兼容',
+      emptyHint: '暂无遗留技能'
+    }
   };
   
   let html = '';
+  let hasAnySkill = false;
   
   for (const [cat, info] of Object.entries(categories)) {
     const items = skills[cat] || [];
-    if (items.length === 0) continue;
+    const isEmpty = items.length === 0;
+    
+    // 只显示非空的分类，或者 user/market 显示空提示
+    if (isEmpty && !info.showCreateHint && !info.showMarketHint) continue;
+    
+    hasAnySkill = hasAnySkill || !isEmpty;
     
     html += `
       <div class="skills-category">
@@ -1854,18 +1909,45 @@ function renderSkills(skills) {
         </div>
     `;
     
-    for (const skill of items) {
-      const trustClass = skill.trust_level || 'system';
-      const trustLabel = { system: 'SYSTEM', user: 'USER', market: 'MARKET' }[trustClass] || trustClass;
-      
-      html += `
-        <div class="skill-item">
-          <div class="skill-name">${escapeHtml(skill.name)}</div>
-          <div class="skill-desc">${escapeHtml(skill.description)}</div>
-          <div class="skill-meta">
-            <span class="skill-trust-badge ${trustClass}">${trustLabel}</span>
-            <code style="font-size: 10px; color: var(--text3);">${escapeHtml(skill.path)}</code>
+    if (!isEmpty) {
+      // 显示技能列表
+      for (const skill of items) {
+        const trustClass = skill.trust_level || 'system';
+        const trustLabel = { system: 'SYSTEM', user: 'USER', market: 'MARKET' }[trustClass] || trustClass;
+        
+        html += `
+          <div class="skill-item">
+            <div class="skill-name">${escapeHtml(skill.name)}</div>
+            <div class="skill-desc">${escapeHtml(skill.description)}</div>
+            <div class="skill-meta">
+              <span class="skill-trust-badge ${trustClass}">${trustLabel}</span>
+              <code style="font-size: 10px; color: var(--text3);">${escapeHtml(skill.path)}</code>
+            </div>
           </div>
+        `;
+      }
+    } else if (info.showCreateHint) {
+      // User Skills 为空时的创建提示
+      html += `
+        <div class="skills-empty">
+          <div>👋 还没有用户技能</div>
+          <div class="skills-empty-hint">点击底部"创建技能"开始制作自己的技能</div>
+        </div>
+        <div class="skill-create-hint">
+          <strong>💡 快速创建：</strong><br>
+          <code>python skills/system/skill-creator/scripts/init_skill.py my-skill --path skills/user</code>
+        </div>
+      `;
+    } else if (info.showMarketHint) {
+      // Market Skills 为空时的市场提示
+      html += `
+        <div class="skills-empty">
+          <div>🌐 还没有外部技能</div>
+          <div class="skills-empty-hint">从社区下载技能或点击"浏览市场"查看推荐</div>
+        </div>
+        <div class="skill-create-hint">
+          <strong>📥 安装示例：</strong><br>
+          下载 .skill 文件到 <code>skills/market/</code> 并解压
         </div>
       `;
     }
@@ -1878,6 +1960,40 @@ function renderSkills(skills) {
   }
   
   contentEl.innerHTML = html;
+}
+
+// 创建新技能
+function createNewSkill() {
+  const hint = `创建新技能的步骤：
+
+1. 使用 skill-creator 初始化：
+   python skills/system/skill-creator/scripts/init_skill.py my-skill --path skills/user
+
+2. 编辑 SKILL.md 文件
+
+3. 测试并打包
+
+详细指南请参考 find-skills skill 的文档。`;
+  
+  alert(hint);
+}
+
+// 浏览技能市场
+function browseSkillMarket() {
+  const hint = `技能市场（社区推荐）：
+
+📦 可从以下渠道获取技能：
+1. GitHub 搜索：site:github.com *.skill
+2. 社区分享页面
+3. 手动创建自己的技能
+
+⚠️ 安全提示：
+- Market 级技能会自动进行安全检查
+- 安装前建议审查 scripts/ 目录下的代码
+
+详细安装指南请参考 find-skills skill 的文档。`;
+  
+  alert(hint);
 }
 
 // HTML 转义
