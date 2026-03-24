@@ -99,6 +99,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_sessions_list()
         elif path.startswith("/api/sessions/"):
             self._handle_session_get(path)
+        elif path == "/api/skills":
+            self._handle_skills_list()
         else:
             self.send_response(404)
             self.end_headers()
@@ -1089,11 +1091,45 @@ def _handle_session_post(self, path: str, data: dict):
         _json_response(self, {"error": "Failed to update session"}, 500)
 
 
+def _handle_skills_list(self):
+    """GET /api/skills - 获取技能列表"""
+    try:
+        from .skills import scan_skills
+        skills = scan_skills()
+        
+        # 按类别分组
+        result = {
+            "system": [],
+            "user": [],
+            "market": [],
+            "legacy": []
+        }
+        
+        for skill in skills:
+            category = skill.category or "other"
+            skill_info = {
+                "name": skill.name,
+                "description": skill.description,
+                "path": str(skill.path),
+                "trust_level": skill.trust_level.value,
+                "category": category
+            }
+            if category in result:
+                result[category].append(skill_info)
+            else:
+                result["legacy"].append(skill_info)
+        
+        _json_response(self, {"skills": result})
+    except Exception as e:
+        _json_response(self, {"error": str(e)}, 500)
+
+
 # 绑定方法到 Handler
 Handler._json_response = _json_response
 Handler._handle_sessions_list = _handle_sessions_list
 Handler._handle_session_get = _handle_session_get
 Handler._handle_session_post = _handle_session_post
+Handler._handle_skills_list = _handle_skills_list
 
 
 def main():
