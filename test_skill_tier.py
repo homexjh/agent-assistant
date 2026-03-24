@@ -22,7 +22,7 @@ def test_basic():
     for s in skills[:5]:
         print(f"  - {s.name}: {s.category}")
     
-    assert len(skills) == 12, f"应该有12个技能，实际{len(skills)}"
+    assert len(skills) >= 14, f"应该至少有14个技能（12原有+2新增），实际{len(skills)}"
     assert all(s.category == "system" for s in skills)
     print("✅ 通过\n")
 
