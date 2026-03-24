@@ -190,6 +190,11 @@ def scan_skills(
 def build_skills_summary(skills: list[SkillMeta]) -> str:
     """
     生成写入 system prompt 的 skill 摘要段落。
+    
+    按类别分组显示：
+    - System Skills: 系统内置，完全信任
+    - User Skills: 用户创建，基本信任  
+    - Market Skills: 外部下载，需安全检查
     """
     if not skills:
         return ""
@@ -197,12 +202,34 @@ def build_skills_summary(skills: list[SkillMeta]) -> str:
     lines = ["# Available Skills\n"]
     lines.append("The following skills are available. To use a skill, read its SKILL.md for full instructions.\n")
     
+    # 按类别分组
+    by_category: dict[str, list[SkillMeta]] = {}
     for s in skills:
-        lines.append(f"- **{s.name}**: {s.description}")
-        # 添加 skill 路径，方便 LLM 读取
-        rel_path = s.path.relative_to(Path(__file__).parent.parent)
-        lines.append(f"  - Path: `{rel_path}`")
-        if s.category and s.category != "system":
-            lines.append(f"  - Category: [{s.category}]")
+        cat = s.category or "other"
+        by_category.setdefault(cat, []).append(s)
+    
+    # 按优先级排序：system > user > market > legacy > other
+    priority = {"system": 0, "user": 1, "market": 2, "legacy": 3, "other": 4}
+    sorted_categories = sorted(by_category.keys(), key=lambda c: priority.get(c, 99))
+    
+    category_names = {
+        "system": "System Skills (Built-in)",
+        "user": "User Skills (Custom)",
+        "market": "Market Skills (External)",
+        "legacy": "Legacy Skills (Deprecated)",
+        "other": "Other Skills"
+    }
+    
+    for category in sorted_categories:
+        skill_list = by_category[category]
+        cat_display = category_names.get(category, f"{category.title()} Skills")
+        
+        lines.append(f"\n## {cat_display}\n")
+        
+        for s in skill_list:
+            lines.append(f"- **{s.name}**: {s.description}")
+            # 添加相对路径
+            rel_path = s.path.relative_to(Path(__file__).parent.parent)
+            lines.append(f"  - Path: `{rel_path}`")
     
     return "\n".join(lines)
