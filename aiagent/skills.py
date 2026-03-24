@@ -199,7 +199,10 @@ def build_skills_summary(skills: list[SkillMeta]) -> str:
     
     for s in skills:
         lines.append(f"- **{s.name}**: {s.description}")
+        # 添加 skill 路径，方便 LLM 读取
+        rel_path = s.path.relative_to(Path(__file__).parent.parent)
+        lines.append(f"  - Path: `{rel_path}`")
         if s.category and s.category != "system":
-            lines.append(f"  - [{s.category}]")
+            lines.append(f"  - Category: [{s.category}]")
     
     return "\n".join(lines)
