@@ -324,11 +324,12 @@ async def _browser_handler(
                 # 自动切换到最新的标签页（最后一个）
                 _page = _browser.contexts[0].pages[-1]
                 await _page.bring_to_front()
+                page = _page  # 同时更新局部变量，确保后续截图在新页面
                 result = f"Clicked '{ref}'.\n✅ 检测到 {new_tabs} 个新标签页，已自动切换到最新标签页: {_page.url[:80]}..."
             else:
                 result = f"Clicked '{ref}'."
         
-        # 操作后等待一下再截图
+        # 操作后等待一下再截图（注意：如果切换了标签页，page 已更新为新页面）
         await page.wait_for_timeout(500)
         ss_path = await _auto_screenshot(page, action_name) if auto_screenshot else None
         if ss_path:
