@@ -8,7 +8,7 @@
 ## 📊 分支关系总览
 
 ```
-master (2cc7f08) ← **当前最新** (已合并浏览器修复分支)
+master (e0fc806) ← **当前最新** (已合并浏览器修复分支 + 文档更新)
   │
   ├── fix/browser-snapshot-tab-20260325 (f54da48) ← **已合并**到 master
   │     ├── fix: snapshot 崩溃 + 标签页切换
@@ -17,7 +17,6 @@ master (2cc7f08) ← **当前最新** (已合并浏览器修复分支)
   │     └── fix: 局部变量同步问题
   │
   ├── feature/todo-list-20260318 (84778f0) ← 已合并到 master
-  │     │  (包含: Skill 安全分层 + Web UI 技能向导 + README 重写)
   │     │  (包含: Skill 安全分层 + Web UI 技能向导 + README 重写)
   │     │
   │     ├── merge: 用户画像分离与安全上下文注入 (22b2a7b)
@@ -281,14 +280,14 @@ System Skills:
   2. ✅ 添加 switch_tab action 支持标签页切换
   3. ✅ click 后自动切换到新标签页
   4. ✅ 修复局部变量未同步问题
-- **状态**: **已合并到 master** (2cc7f08, 2026-03-25)
+- **状态**: **已合并到 master** (2cc7f08 + e0fc806, 2026-03-25)
 
 ---
 
 ## 🗑️ 可清理分支
 
 以下分支已合并到 master，可删除:
-- `fix/browser-snapshot-tab-20260325` ✅ **已合并到 master (2cc7f08)**
+- `fix/browser-snapshot-tab-20260325` ✅ **已合并到 master (e0fc806)**
 - `feature/todo-list-20260318` ✅ **已合并到 master (c4c14c4)**
 - `feature/memory-struct-20260320` ✅ 已合并
 - `feature/skill-security-tier-20260324` ✅ 已合并
