@@ -312,6 +312,7 @@ git branch -d feature/server-session-20260318
 
 | 日期 | 更新内容 | 更新人 |
 |------|----------|--------|
+| 2026-03-26 | 完成: feature/error-standardization-20260326 实施（3阶段+26测试） | Kimi |
 | 2026-03-26 | 文档: 添加错误标准化与资源管理对接方案 | Kimi |
 | 2026-03-25 | 清理: 删除根目录过时规划文档 (6个文件) | Kimi |
 | 2026-03-25 | 合并: fix/browser-snapshot-tab-20260325 → master | Kimi |
