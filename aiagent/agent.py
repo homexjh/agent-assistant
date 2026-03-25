@@ -254,7 +254,13 @@ class Agent:
             log(traceback.format_exc())
 
     async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> dict:
-        """先查 extra_tools，再走内置工具注册表。"""
+        """先查 extra_tools，再走内置工具注册表。
+        
+        新增：错误标准化和广播
+        """
+        from .error_parser import ErrorParser
+        from .resource_bridge import emit_error
+        
         extra = self._extra_tools.get(name)
         if extra is not None:
             try:
@@ -269,6 +275,25 @@ class Agent:
                     content = extra.handler(**kwargs)
             except Exception as e:
                 content = f"Error: {e}"
+            
+            # 解析并广播错误（子 Agent 工具）
+            error = ErrorParser.parse(content, name)
+            if error:
+                context = {
+                    "session_id": self.session_id,
+                    "tool_call_id": tool_call_id,
+                    "tool_name": name,
+                    "agent_depth": self.depth,
+                    "timestamp": error.timestamp,
+                }
+                emit_error(error, context)
+                return {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": error.to_llm_text(),
+                    "_structured_error": error.to_dict(),
+                }
+            
             return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
 
         return await execute_tool(tool_call_id, name, arguments)

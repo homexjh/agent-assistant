@@ -5,6 +5,10 @@ import json
 from contextvars import ContextVar
 from .types import RegisteredTool, ToolDefinition
 
+# 错误标准化支持
+from ..error_parser import ErrorParser
+from ..resource_bridge import emit_error
+
 # 上下文变量：用于在工具中发送任务列表更新
 todo_emitter: ContextVar[callable | None] = ContextVar('todo_emitter', default=None)
 
@@ -125,5 +129,24 @@ async def execute_tool(tool_call_id: str, name: str, arguments: str) -> dict:
             content = tool.handler(**kwargs)
     except Exception as e:
         content = f'Error executing tool "{name}": {e}'
+
+    # 新增：解析错误并广播事件
+    error = ErrorParser.parse(content, name)
+    if error:
+        context = {
+            "tool_call_id": tool_call_id,
+            "tool_name": name,
+            "arguments": kwargs,
+            "timestamp": error.timestamp,
+        }
+        emit_error(error, context)
+        
+        # 返回结构化错误（LLM 看到文本，机器可读 _structured_error）
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": error.to_llm_text(),  # LLM 看到友好文本
+            "_structured_error": error.to_dict(),  # 机器可读（资源管理用）
+        }
 
     return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
