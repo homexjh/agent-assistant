@@ -199,7 +199,6 @@ async def _browser_handler(
     
     if action == "switch_tab":
         """切换到指定索引的标签页"""
-        global _page
         if not _browser or not _browser.contexts:
             return "Browser is not running. Use action=open first."
         
