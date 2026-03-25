@@ -1,5 +1,11 @@
 # 错误标准化与资源管理系统对接方案
 
+> **实施状态**: ✅ 已完成（2026-03-26）  
+> **分支**: `feature/error-standardization-20260326`  
+> **测试**: 26个单元测试全部通过，Web UI 集成测试通过
+
+---
+
 ## 背景与动机
 
 ### 当前问题
@@ -21,6 +27,24 @@
 ---
 
 ## 目标
+
+### ✅ 已完成（2026-03-26）
+
+1. **Phase 1 - 基础设施**:
+   - ✅ `aiagent/errors.py` - AgentError 数据类 + ErrorType/Severity 枚举
+   - ✅ `aiagent/error_parser.py` - 错误解析器（支持 exec/browser/web/file/pdf/image）
+   - ✅ `aiagent/resource_bridge.py` - 资源管理对接接口 + 事件广播
+
+2. **Phase 2 - 集成改造**:
+   - ✅ `aiagent/tools/__init__.py` - execute_tool() 集成错误解析
+   - ✅ `aiagent/agent.py` - _execute_tool() 子 Agent 工具错误处理
+
+3. **Phase 3 - 测试验证**:
+   - ✅ `tests/test_error_handling.py` - 26个单元测试
+   - ✅ Web UI 集成测试 - 验证 LLM 友好显示 + 结构化数据
+   - ✅ `docs/ERROR_HANDLING.md` - 使用指南
+
+### 🔄 待完成（资源管理对接时）
 
 1. **短期（现在）**：
    - 定义标准化错误结构

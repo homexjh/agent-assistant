@@ -272,6 +272,21 @@ System Skills:
 
 ## 🔄 进行中分支
 
+### feature/error-standardization-20260326 ✅ 实施完成，待合并
+- **目的**: 错误处理标准化，为资源管理系统对接做准备
+- **基于**: `master` (8a7fbeb)
+- **实施内容**:
+  1. ✅ Phase 1: 3个核心模块（errors.py, error_parser.py, resource_bridge.py）
+  2. ✅ Phase 2: 集成到工具执行流程（tools/__init__.py, agent.py）
+  3. ✅ Phase 3: 26个单元测试全部通过
+  4. ✅ 文档: ERROR_HANDLING.md 使用指南
+- **测试验证**:
+  - ✅ 单元测试: 26 passed
+  - ✅ Web UI 测试: EXEC_TIMEOUT, FILE_NOT_FOUND, BROWSER_ELEMENT_NOT_FOUND 等错误正常显示
+  - ✅ LLM 友好: 显示错误码 + 重试提示
+  - ✅ 结构化数据: `_structured_error` 字段包含机器可读数据
+- **状态**: **测试通过，待合并到 master**
+
 ### fix/browser-snapshot-tab-20260325 ✅ 已合并
 - **目的**: 修复浏览器工具的两个问题
 - **基于**: `master` (efb4c08)
