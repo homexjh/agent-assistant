@@ -10,7 +10,7 @@
 ```
 master (9fbd374)
   │
-  ├── feature/todo-list-20260318 (db24233) ← 当前主开发分支
+  ├── feature/todo-list-20260318 (ded74e2) ← 当前主开发分支（已合并 Skill 安全分层）
   │     │
   │     ├── merge: 用户画像分离与安全上下文注入 (22b2a7b)
   │     │
@@ -28,13 +28,14 @@ master (9fbd374)
   │           ├── fix: 前端使用 sid 作为 rid
   │           └── feat: 实现 SessionManager 会话级别摘要
   │
-  ├── feature/skill-security-tier-20260324 (6b15e39) ← Skill 安全分层 + Web UI 技能管理
+  ├── feature/skill-security-tier-20260324 (92d9433) ← **已合并**到 feature/todo-list-20260318
   │     ├── feat: Phase 1 - Skill 安全分层基础实施
   │     ├── feat: Phase 2 - 添加 research skill 和测试
   │     ├── feat: Phase 2 - 添加 find-skills skill 和测试
   │     ├── feat: add skill management panel to Web UI
   │     ├── feat: enhance skill panel with empty state UX
-  │     └── feat: add visual skill creation wizard
+  │     ├── feat: add visual skill creation wizard
+  │     └── merge: 合并到 feature/todo-list-20260318 (ded74e2)
   │
   └── feature/memory-struct-20260320 (aac4adc) ← **已合并**到 feature/todo-list-20260318
         ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档
@@ -78,6 +79,12 @@ master (9fbd374)
 - ✅ 子 Agent Workspace 隔离
 - ✅ SubAgent 安全上下文注入
 - ✅ **Daily Log 自动摘要** (合并自 feature/memory-struct-20260320)
+- ✅ **Skill 安全分层 + Web UI 技能管理** (合并自 feature/skill-security-tier-20260324)
+
+**合并记录**:
+| 日期 | 合并来源 | 合并提交 | 说明 |
+|------|----------|----------|------|
+| 2026-03-25 | feature/skill-security-tier-20260324 | ded74e2 | Skill 安全分层 + Web UI 技能向导 |
 
 ---
 
