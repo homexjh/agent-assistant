@@ -1,16 +1,17 @@
 # 分支历史与提交记录
 
 > 记录项目所有分支的创建、合并、提交历史
-> 最后更新: 2026-03-25
+> 最后更新: 2026-03-25 (master 已合并最新功能)
 
 ---
 
 ## 📊 分支关系总览
 
 ```
-master (9fbd374)
+master (c4c14c4) ← **当前最新** (已合并 feature/todo-list-20260318 + README 更新)
   │
-  ├── feature/todo-list-20260318 (ded74e2) ← 当前主开发分支（已合并 Skill 安全分层）
+  ├── feature/todo-list-20260318 (84778f0) ← 已合并到 master
+  │     │  (包含: Skill 安全分层 + Web UI 技能向导 + README 重写)
   │     │
   │     ├── merge: 用户画像分离与安全上下文注入 (22b2a7b)
   │     │
@@ -55,9 +56,21 @@ master (9fbd374)
 
 | 提交 | 日期 | 说明 |
 |------|------|------|
+| c4c14c4 | 2026-03-25 | **merge**: 合并 feature/todo-list-20260318 (Skill 安全分层 + README 更新) |
 | 9fbd374 | 2026-03-16 | feat: 添加任务列表（Todo List）功能 |
 
-**状态**: 稳定基线，不直接开发
+**状态**: ✅ **最新稳定版本**，包含所有 Phase 5 功能
+
+**包含功能**:
+- ✅ Todo List 任务管理
+- ✅ 用户画像分离 (USER.md / MEMORY.md)
+- ✅ 子 Agent Workspace 隔离
+- ✅ Daily Log 自动摘要
+- ✅ **Skill 三级安全架构** (system/user/market)
+- ✅ **Web UI 技能管理面板 + 创建向导**
+- ✅ **4阶段研究能力** (research skill)
+- ✅ **代码安全扫描器**
+- ✅ **重写 README 文档**
 
 ---
 
@@ -84,6 +97,7 @@ master (9fbd374)
 **合并记录**:
 | 日期 | 合并来源 | 合并提交 | 说明 |
 |------|----------|----------|------|
+| 2026-03-25 | feature/todo-list-20260318 → master | c4c14c4 | **大合并**: 所有 Phase 5 功能 + README 重写 |
 | 2026-03-25 | feature/skill-security-tier-20260324 | ded74e2 | Skill 安全分层 + Web UI 技能向导 |
 
 ---
@@ -252,13 +266,19 @@ System Skills:
 
 ## 🗑️ 可清理分支
 
-以下分支已合并，可删除:
+以下分支已合并到 master，可删除:
+- `feature/todo-list-20260318` ✅ **已合并到 master (c4c14c4)**
+- `feature/memory-struct-20260320` ✅ 已合并
+- `feature/skill-security-tier-20260324` ✅ 已合并
 - `feature/memory-week1-20260319`
 - `feature/subagent-isolation-20260319`
 - `feature/server-session-20260318`
 
 ```bash
 # 删除已合并分支
+git branch -d feature/todo-list-20260318
+git branch -d feature/memory-struct-20260320
+git branch -d feature/skill-security-tier-20260324
 git branch -d feature/memory-week1-20260319
 git branch -d feature/subagent-isolation-20260319
 git branch -d feature/server-session-20260318
@@ -270,4 +290,5 @@ git branch -d feature/server-session-20260318
 
 | 日期 | 更新内容 | 更新人 |
 |------|----------|--------|
+| 2026-03-25 | 更新: master 已合并 feature/todo-list-20260318，添加 README 更新记录 | Kimi |
 | 2026-03-22 | 创建文档，记录所有分支历史 | Kimi |
