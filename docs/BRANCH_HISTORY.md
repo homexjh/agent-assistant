@@ -1,7 +1,7 @@
 # 分支历史与提交记录
 
 > 记录项目所有分支的创建、合并、提交历史
-> 最后更新: 2026-03-23
+> 最后更新: 2026-03-25
 
 ---
 
@@ -27,6 +27,14 @@ master (9fbd374)
   │           ├── fix: 删除旧的请求级别摘要逻辑
   │           ├── fix: 前端使用 sid 作为 rid
   │           └── feat: 实现 SessionManager 会话级别摘要
+  │
+  ├── feature/skill-security-tier-20260324 (6b15e39) ← Skill 安全分层 + Web UI 技能管理
+  │     ├── feat: Phase 1 - Skill 安全分层基础实施
+  │     ├── feat: Phase 2 - 添加 research skill 和测试
+  │     ├── feat: Phase 2 - 添加 find-skills skill 和测试
+  │     ├── feat: add skill management panel to Web UI
+  │     ├── feat: enhance skill panel with empty state UX
+  │     └── feat: add visual skill creation wizard
   │
   └── feature/memory-struct-20260320 (aac4adc) ← **已合并**到 feature/todo-list-20260318
         ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档
@@ -186,28 +194,52 @@ master (9fbd374)
 
 ---
 
-## 🎯 下一步计划
+## 🎯 当前状态
 
-### 方案 A: 合并后继续（推荐）
+### ✅ 已完成：Phase 5 - Skill 安全分层
 
-```bash
-# 1. 合并 memory-struct 到主分支
-git checkout feature/todo-list-20260318
-git merge feature/memory-struct-20260320
+**分支**: `feature/skill-security-tier-20260324`
 
-# 2. 创建 Skill 安全分支
-git checkout -b feature/skill-security-20260322
+**状态**: **已完成，可合并**
+
+**基于**: `feature/todo-list-20260318` (已包含 Daily Log + Memory + Session)
+
+**实施内容** (参考 PHASE5_IMPLEMENTATION_PLAN.md + SKILL_SECURITY_TIER_IMPLEMENTATION.md):
+
+#### Phase 1: 安全基础 ✅
+- [x] 目录结构调整 (skills/{system,user,market}/)
+- [x] skill_security.py (危险代码扫描)
+- [x] skills.py 三级扫描 + 分组显示
+- [x] 12个技能迁移到 system/
+
+#### Phase 2: 核心技能补充 ✅
+- [x] research skill (4阶段研究方法论)
+- [x] find-skills skill (技能发现与管理)
+- [x] 测试覆盖 (20个测试全部通过)
+
+**新增技能 (14个总计):**
+```
+System Skills:
+  - coding-agent, gh-issues, github, nano-pdf, obsidian
+  - peekaboo, session-logs, skill-creator, summarize
+  - tmux, weather, xurl
+  - research ⭐ (新增)
+  - find-skills ⭐ (新增)
 ```
 
-**预期**: `feature/todo-list-20260318` 将包含所有 Phase 5 功能
+**测试验证:**
+- ✅ 20个单元测试全部通过
+- ✅ Web UI 实测验证通过 (research skill)
+- ✅ 安全扫描检测危险代码
 
-### 方案 B: 独立开发
+**文档:**
+- `docs/PHASE5_IMPLEMENTATION_PLAN.md` - 实施计划
+- `docs/SKILL_SECURITY_TIER_IMPLEMENTATION.md` - 详细报告
+- `docs/DEERFLOW_SKILL_ANALYSIS.md` - 竞品分析
 
-```bash
-# 从当前分支创建，不合并
-git checkout feature/memory-struct-20260320
-git checkout -b feature/skill-security-20260322
-```
+---
+
+## 🎯 历史合并记录
 
 ---
 
