@@ -236,12 +236,24 @@ class ErrorParser:
         if not content or not isinstance(content, str):
             return None
         
-        # 检查是否包含错误关键词
+        # 检查是否包含错误关键词（扩展匹配范围）
         content_stripped = content.strip()
-        if not (content_stripped.startswith("Error") or 
-                content_stripped.startswith("HTTP Error") or
-                "timed out" in content_stripped or
-                "not found" in content_stripped.lower()):
+        error_indicators = [
+            "error", "Error", "ERROR",
+            "HTTP Error",
+            "timed out", "timeout",
+            "not found", "Not Found",
+            "permission denied", "Permission denied",
+            "no such file", "No such file",
+            "no results",
+            "[Errno",
+            "failed", "Failed", "FAIL",
+            "unable to", "Unable to",
+            "cannot", "Cannot", "Can't",
+        ]
+        
+        has_error = any(indicator in content for indicator in error_indicators)
+        if not has_error:
             return None
         
         # 按优先级排序（高优先级先匹配）
