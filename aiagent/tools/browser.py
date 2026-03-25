@@ -315,13 +315,16 @@ async def _browser_handler(
             initial_pages = len(_browser.contexts[0].pages) if _browser and _browser.contexts else 0
             await el.click(timeout=timeout_ms)
             action_name = "click"
-            await page.wait_for_timeout(800)  # 等待新标签页打开
+            await page.wait_for_timeout(1000)  # 等待新标签页打开
             
-            # 检测是否有新标签页打开
+            # 检测是否有新标签页打开，自动切换到最新标签页
             current_pages = len(_browser.contexts[0].pages) if _browser and _browser.contexts else 0
             if current_pages > initial_pages:
                 new_tabs = current_pages - initial_pages
-                result = f"Clicked '{ref}'.\n⚠️ 注意: 检测到 {new_tabs} 个新标签页打开！当前在旧页面。\n💡 使用 action=tabs 查看所有标签，然后用 action=switch_tab + ref=索引 切换到新标签页。"
+                # 自动切换到最新的标签页（最后一个）
+                _page = _browser.contexts[0].pages[-1]
+                await _page.bring_to_front()
+                result = f"Clicked '{ref}'.\n✅ 检测到 {new_tabs} 个新标签页，已自动切换到最新标签页: {_page.url[:80]}..."
             else:
                 result = f"Clicked '{ref}'."
         
