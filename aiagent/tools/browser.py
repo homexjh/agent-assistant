@@ -193,9 +193,34 @@ async def _browser_handler(
             return "Browser is not running. Use action=open first."
         pages = _browser.contexts[0].pages if _browser.contexts else []
         tab_list = "\n".join(
-            f"  [{i}] {p.url}" for i, p in enumerate(pages)
+            f"  [{i}] {'[ACTIVE] ' if p == _page else ''}{p.url[:80]}..." if len(p.url) > 80 else f"  [{i}] {'[ACTIVE] ' if p == _page else ''}{p.url}" for i, p in enumerate(pages)
         ) or "  (no tabs)"
         return f"Open tabs:\n{tab_list}"
+    
+    if action == "switch_tab":
+        """切换到指定索引的标签页"""
+        global _page
+        if not _browser or not _browser.contexts:
+            return "Browser is not running. Use action=open first."
+        
+        tab_index = ref  # 使用 ref 参数传递索引
+        if tab_index is None:
+            return "Error: 'ref' (tab index) is required for action=switch_tab."
+        
+        try:
+            idx = int(tab_index)
+            pages = _browser.contexts[0].pages
+            if idx < 0 or idx >= len(pages):
+                return f"Error: Invalid tab index {idx}. Available: 0-{len(pages)-1}. Use action=tabs to list."
+            _page = pages[idx]
+            await _page.bring_to_front()
+            ss_path = await _auto_screenshot(_page, "switch_tab") if auto_screenshot else None
+            result = f"Switched to tab [{idx}]: {_page.url}"
+            if ss_path:
+                result += f"\n📸 Screenshot: {ss_path}"
+            return result
+        except ValueError:
+            return f"Error: 'ref' must be a number (tab index). Got: {tab_index}"
 
     if action == "open":
         if not url:
@@ -226,7 +251,11 @@ async def _browser_handler(
         # 返回页面可见文本内容（简化 ARIA 树）
         text_content = await page.evaluate("""() => {
             function getText(el, depth=0) {
+                // 文本节点
                 if (el.nodeType === 3) return el.textContent.trim();
+                // 非 Element 节点（注释、CDATA等）
+                if (el.nodeType !== 1) return '';
+                // 跳过脚本和样式
                 if (['SCRIPT','STYLE','NOSCRIPT'].includes(el.tagName)) return '';
                 const role = el.getAttribute('aria-label') || el.getAttribute('alt') || '';
                 const tag = el.tagName.toLowerCase();
@@ -283,9 +312,19 @@ async def _browser_handler(
             action_name = f"press_{key}"
             result = f"Pressed key '{key}' on '{ref}'."
         else:
+            # 获取点击前的标签页数量
+            initial_pages = len(_browser.contexts[0].pages) if _browser and _browser.contexts else 0
             await el.click(timeout=timeout_ms)
             action_name = "click"
-            result = f"Clicked '{ref}'."
+            await page.wait_for_timeout(800)  # 等待新标签页打开
+            
+            # 检测是否有新标签页打开
+            current_pages = len(_browser.contexts[0].pages) if _browser and _browser.contexts else 0
+            if current_pages > initial_pages:
+                new_tabs = current_pages - initial_pages
+                result = f"Clicked '{ref}'.\n⚠️ 注意: 检测到 {new_tabs} 个新标签页打开！当前在旧页面。\n💡 使用 action=tabs 查看所有标签，然后用 action=switch_tab + ref=索引 切换到新标签页。"
+            else:
+                result = f"Clicked '{ref}'."
         
         # 操作后等待一下再截图
         await page.wait_for_timeout(500)
@@ -339,13 +378,13 @@ browser_tool = RegisteredTool(
         type="function",
         function={
             "name": "browser",
-            "description": (
+           "description": (
                 "Control a local browser using Playwright. "
                 "Requires: uv add playwright && uv run playwright install chromium. "
                 "Actions: status, open, navigate, snapshot (get page text), "
                 "screenshot, act (click/type/press/evaluate via CSS selector or JS), scroll, tabs, "
-                "list_screenshots, clear_screenshots, close. "
-                "NOTE: Every action automatically saves a screenshot so you can see what happened!"
+                "switch_tab (switch to tab by index), list_screenshots, clear_screenshots, close. "
+                "NOTE: After click that opens new tab, use action=tabs to see all tabs, then switch_tab to change."
             ),
             "parameters": {
                 "type": "object",
@@ -353,7 +392,7 @@ browser_tool = RegisteredTool(
                     "action": {
                         "type": "string",
                         "enum": ["status", "open", "navigate", "snapshot", "screenshot",
-                                 "act", "scroll", "tabs", "list_screenshots", "clear_screenshots", "close"],
+                                 "act", "scroll", "tabs", "switch_tab", "list_screenshots", "clear_screenshots", "close"],
                         "description": "Browser action to perform.",
                     },
                     "url": {
@@ -362,7 +401,7 @@ browser_tool = RegisteredTool(
                     },
                     "ref": {
                         "type": "string",
-                        "description": "CSS selector for act action (e.g. '#submit', 'input[name=q]').",
+                        "description": "CSS selector for act action (e.g. '#submit', 'input[name=q]'). For switch_tab action, this is the tab index (0, 1, 2...).",
                     },
                     "text": {
                         "type": "string",
