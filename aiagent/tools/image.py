@@ -54,6 +54,8 @@ async def _image_handler(
     images: list[str] | None = None,
 ) -> str:
     """分析一张或多张图片，返回 LLM 的分析结果。"""
+    from . import emit_todo
+    
     # 收集所有图片
     paths: list[str] = []
     if image:
@@ -64,6 +66,18 @@ async def _image_handler(
         return "Error: must provide 'image' or 'images' parameter."
     if len(paths) > 20:
         return "Error: too many images (max 20)."
+
+    # 发送任务列表
+    if len(paths) == 1:
+        emit_todo([
+            {"id": "1", "title": f"加载图片: {os.path.basename(paths[0])}", "status": "in_progress"},
+            {"id": "2", "title": "Vision 分析", "status": "pending"},
+        ])
+    else:
+        emit_todo([
+            {"id": "1", "title": f"加载 {len(paths)} 张图片", "status": "in_progress"},
+            {"id": "2", "title": "Vision 批量分析", "status": "pending"},
+        ])
 
     api_key = os.getenv("OPENAI_API_KEY", "")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.moonshot.cn/v1")
@@ -96,6 +110,18 @@ async def _image_handler(
                 "image_url": {"url": url_or_data},
             })
 
+    # 更新进度
+    if len(paths) == 1:
+        emit_todo([
+            {"id": "1", "title": f"加载图片: {os.path.basename(paths[0])}", "status": "done"},
+            {"id": "2", "title": "Vision 分析", "status": "in_progress"},
+        ])
+    else:
+        emit_todo([
+            {"id": "1", "title": f"加载 {len(paths)} 张图片", "status": "done"},
+            {"id": "2", "title": "Vision 批量分析", "status": "in_progress"},
+        ])
+
     # 调用 LLM
     try:
         response = await client.chat.completions.create(
@@ -103,8 +129,24 @@ async def _image_handler(
             messages=[{"role": "user", "content": content}],  # type: ignore
             max_tokens=2048,
         )
-        return response.choices[0].message.content or "(empty response)"
+        result = response.choices[0].message.content or "(empty response)"
+        
+        # 任务完成
+        if len(paths) == 1:
+            emit_todo([
+                {"id": "1", "title": f"加载图片: {os.path.basename(paths[0])}", "status": "done"},
+                {"id": "2", "title": "Vision 分析", "status": "done"},
+            ])
+        else:
+            emit_todo([
+                {"id": "1", "title": f"加载 {len(paths)} 张图片", "status": "done"},
+                {"id": "2", "title": "Vision 批量分析", "status": "done"},
+            ])
+        return f"[已分析图片: {', '.join(paths)}]\n\n{result}"
     except Exception as e:
+        emit_todo([
+            {"id": "2", "title": "Vision 分析", "status": "error"},
+        ])
         return f"Error calling LLM for image analysis: {e}"
 
 

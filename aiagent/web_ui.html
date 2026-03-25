@@ -27,6 +27,12 @@
   .dot.run { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); animation: pulse 1s infinite; }
   #st { font-size: 13px; color: var(--text2); }
   .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .token-counter { font-size: 12px; color: var(--text3); padding: 4px 10px;
+    background: var(--bg3); border-radius: 12px; border: 1px solid var(--border);
+    transition: all .3s; }
+  .token-counter.normal { color: var(--text3); border-color: var(--border); }
+  .token-counter.warning { color: var(--yellow); border-color: rgba(251, 191, 36, 0.4); }
+  .token-counter.danger { color: var(--red); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.1); }
   .btn-sm { padding: 5px 13px; background: transparent; border: 1px solid var(--border);
     border-radius: 20px; color: var(--text2); font-size: 12px; cursor: pointer;
     transition: all .2s; white-space: nowrap; }
@@ -77,6 +83,318 @@
     background: var(--bg2); border: 1px solid var(--border);
     border-radius: var(--r); z-index: 1001;
     box-shadow: 0 10px 40px rgba(0,0,0,.4);
+  }
+  /* 技能管理面板 */
+  .skills-panel {
+    position: absolute; top: 45px; right: 20px; width: 420px; max-height: 70vh;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); z-index: 1002; overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,.4); display: flex; flex-direction: column;
+  }
+  .skills-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 600; color: var(--text); flex-shrink: 0;
+  }
+  .skills-close { cursor: pointer; color: var(--text3); padding: 2px 6px; border-radius: 4px; }
+  .skills-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  .skills-content { overflow-y: auto; padding: 12px; flex: 1; }
+  .skills-loading { color: var(--text3); font-size: 13px; text-align: center; padding: 20px; }
+  .skills-category { margin-bottom: 16px; }
+  .skills-category-title {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .skills-category-title .badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 10px;
+    background: var(--bg3); color: var(--text2);
+  }
+  .skills-category-title.system { color: var(--green); }
+  .skills-category-title.user { color: var(--accent); }
+  .skills-category-title.market { color: var(--yellow); }
+  .skill-item {
+    padding: 10px; margin-bottom: 8px;
+    background: rgba(255,255,255,0.03); border-radius: var(--rs);
+    border: 1px solid transparent; transition: all .2s;
+  }
+  .skill-item:hover { border-color: var(--border); background: rgba(255,255,255,0.05); }
+  .skill-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  .skill-desc { font-size: 11px; color: var(--text2); line-height: 1.4; }
+  .skill-meta { font-size: 10px; color: var(--text3); margin-top: 6px; }
+  .skill-trust-badge {
+    display: inline-block; padding: 1px 5px; border-radius: 4px;
+    font-size: 9px; margin-right: 6px;
+  }
+  .skill-trust-badge.system { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+  .skill-trust-badge.user { background: rgba(108, 142, 255, 0.15); color: var(--accent); }
+  .skill-trust-badge.market { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+  .skills-empty { text-align: center; padding: 20px; color: var(--text3); font-size: 12px; }
+  .skills-empty-hint { margin-top: 8px; font-size: 11px; color: var(--text2); }
+  .skills-actions {
+    display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .skills-btn {
+    flex: 1; padding: 8px 12px; background: var(--bg3);
+    border: 1px solid var(--border); border-radius: var(--rs);
+    color: var(--text); font-size: 12px; cursor: pointer;
+    transition: all .2s; text-align: center;
+  }
+  .skills-btn:hover { border-color: var(--accent); background: rgba(108,142,255,0.1); }
+  .skills-btn.primary { background: rgba(108,142,255,0.2); border-color: rgba(108,142,255,0.4); }
+  .skills-btn.primary:hover { background: rgba(108,142,255,0.3); }
+  .skill-create-hint {
+    padding: 12px; margin: 8px 0;
+    background: rgba(108,142,255,0.05); border: 1px dashed rgba(108,142,255,0.3);
+    border-radius: var(--rs); font-size: 11px; color: var(--text2);
+  }
+  .skill-create-hint code {
+    background: var(--bg3); padding: 2px 6px; border-radius: 4px;
+  }
+  
+  /* ===== 技能创建向导 ===== */
+  .skill-wizard-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 2000;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .skill-wizard {
+    width: 600px; max-width: 90vw; max-height: 85vh;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: wizardIn 0.3s ease;
+  }
+  @keyframes wizardIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .skill-wizard-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    font-size: 15px; font-weight: 600; color: var(--text);
+  }
+  .skill-wizard-close {
+    cursor: pointer; color: var(--text3); padding: 4px 8px;
+    border-radius: 4px; font-size: 14px;
+  }
+  .skill-wizard-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  
+  /* 步骤指示器 */
+  .skill-wizard-steps {
+    display: flex; padding: 20px; border-bottom: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .wizard-step {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    position: relative; opacity: 0.5; transition: all 0.3s;
+  }
+  .wizard-step.active { opacity: 1; }
+  .wizard-step.completed { opacity: 0.8; }
+  .wizard-step .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--bg3); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: var(--text2);
+    margin-bottom: 6px; transition: all 0.3s;
+  }
+  .wizard-step.active .step-num {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .wizard-step.completed .step-num {
+    background: var(--green); border-color: var(--green); color: white;
+  }
+  .wizard-step .step-label {
+    font-size: 11px; color: var(--text3);
+  }
+  .wizard-step.active .step-label {
+    color: var(--accent);
+  }
+  
+  /* 步骤内容 */
+  .skill-wizard-content {
+    flex: 1; overflow-y: auto; padding: 24px;
+  }
+  .wizard-panel {
+    display: none;
+  }
+  .wizard-panel.active {
+    display: block;
+    animation: panelIn 0.3s ease;
+  }
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  /* 表单样式 */
+  .wizard-form-group {
+    margin-bottom: 20px;
+  }
+  .wizard-form-group label {
+    display: block; font-size: 13px; font-weight: 500;
+    color: var(--text); margin-bottom: 8px;
+  }
+  .wizard-form-group .required {
+    color: #ef4444;
+  }
+  .wizard-input, .wizard-textarea, .wizard-select {
+    width: 100%; padding: 10px 12px;
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--rs); color: var(--text); font-size: 13px;
+    transition: all 0.2s;
+  }
+  .wizard-input:focus, .wizard-textarea:focus, .wizard-select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,142,255,0.1);
+  }
+  .wizard-textarea {
+    resize: vertical; font-family: inherit; line-height: 1.5;
+  }
+  .wizard-textarea.code {
+    font-family: 'SF Mono', Monaco, monospace; font-size: 12px;
+  }
+  .input-hint {
+    display: block; font-size: 11px; color: var(--text3);
+    margin-top: 6px;
+  }
+  
+  /* 资源选择卡片 */
+  .resource-options {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .resource-option {
+    cursor: pointer;
+  }
+  .resource-option input {
+    display: none;
+  }
+  .resource-card {
+    padding: 16px; text-align: center;
+    background: var(--bg1); border: 2px solid var(--border);
+    border-radius: var(--rs); transition: all 0.2s;
+  }
+  .resource-option:hover .resource-card {
+    border-color: rgba(108,142,255,0.4);
+  }
+  .resource-option input:checked + .resource-card {
+    border-color: var(--accent); background: rgba(108,142,255,0.05);
+  }
+  .resource-icon {
+    font-size: 24px; margin-bottom: 8px;
+  }
+  .resource-title {
+    font-size: 12px; font-weight: 600; color: var(--text);
+    margin-bottom: 4px;
+  }
+  .resource-desc {
+    font-size: 10px; color: var(--text3); line-height: 1.4;
+  }
+  
+  /* 存储位置选择 */
+  .storage-options {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .storage-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px; background: var(--bg1);
+    border: 1px solid var(--border); border-radius: var(--rs);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .storage-option:hover {
+    border-color: rgba(108,142,255,0.4);
+  }
+  .storage-option input:checked + span {
+    color: var(--accent);
+  }
+  .storage-option input {
+    accent-color: var(--accent);
+  }
+  
+  /* 预览区域 */
+  .wizard-preview {
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--rs); padding: 16px;
+  }
+  .wizard-preview h4 {
+    margin: 0 0 12px 0; font-size: 13px; color: var(--text);
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+  }
+  .preview-item {
+    display: flex; margin-bottom: 10px; font-size: 12px;
+  }
+  .preview-label {
+    width: 60px; color: var(--text3); flex-shrink: 0;
+  }
+  .preview-value {
+    color: var(--text); flex: 1;
+  }
+  
+  /* 进度和结果 */
+  .wizard-progress {
+    text-align: center; padding: 20px;
+  }
+  .progress-bar {
+    width: 100%; height: 4px; background: var(--bg3);
+    border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+  }
+  .progress-fill {
+    height: 100%; width: 30%; background: var(--accent);
+    border-radius: 2px; animation: progress 1s ease infinite;
+  }
+  @keyframes progress {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  .progress-text {
+    font-size: 12px; color: var(--text2);
+  }
+  .wizard-result {
+    text-align: center; padding: 30px;
+  }
+  .result-icon {
+    font-size: 48px; margin-bottom: 12px;
+  }
+  .result-message {
+    font-size: 16px; font-weight: 600; color: var(--green);
+    margin-bottom: 8px;
+  }
+  .result-path {
+    font-size: 12px; color: var(--text3);
+  }
+  
+  /* 底部按钮 */
+  .skill-wizard-footer {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 20px; border-top: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .wizard-btn {
+    padding: 8px 20px; border-radius: var(--rs); font-size: 13px;
+    cursor: pointer; transition: all 0.2s; border: none;
+  }
+  .wizard-btn.primary {
+    background: var(--accent); color: white;
+  }
+  .wizard-btn.primary:hover {
+    background: var(--accent-hover);
+  }
+  .wizard-btn.secondary {
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .wizard-btn.secondary:hover {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .wizard-btn.success {
+    background: var(--green); color: white;
+  }
+  .wizard-btn.success:hover {
+    background: #2dd4a0;
+  }
+    font-family: monospace; color: var(--accent);
   }
   .todo-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -263,12 +581,14 @@
   <div class="logo">⚡ AIAgent</div>
   <div class="dot" id="dot"></div>
   <span id="st">就绪</span>
+  <div class="token-counter" id="tokenCounter" style="display:none;">···</div>
   <div class="hdr-right">
     <button class="btn-sm btn-stop" id="stopBtn" onclick="stopRun()">■ 停止</button>
     <button class="btn-sm btn-new" onclick="newChat(event)">＋ 新对话</button>
     <button class="btn-sm" onclick="showCronPanel()">⏰ 定时任务</button>
     <button class="btn-sm" onclick="clearAllHistory()">清空记录</button>
     <button class="btn-sm" id="todoToggle" onclick="toggleTodoPanel()">📋 进度</button>
+    <button class="btn-sm" onclick="toggleSkillsPanel()" title="技能管理">🛠️ 技能</button>
     <button class="btn-sm" onclick="toggleSettings()" title="API设置">⚙️ 设置</button>
   </div>
   
@@ -293,6 +613,189 @@
       <span class="todo-close" onclick="toggleTodoPanel()">✕</span>
     </div>
     <div class="todo-list" id="todoList"></div>
+  </div>
+
+  <!-- 技能管理面板 -->
+  <div class="skills-panel" id="skillsPanel" style="display:none;">
+    <div class="skills-header">
+      <span>🛠️ 技能管理</span>
+      <span class="skills-close" onclick="toggleSkillsPanel()">✕</span>
+    </div>
+    <div class="skills-content" id="skillsContent">
+      <div class="skills-loading">加载中...</div>
+    </div>
+    <div class="skills-actions">
+      <button class="skills-btn" onclick="openSkillWizard()">＋ 创建技能</button>
+      <button class="skills-btn primary" onclick="browseSkillMarket()">🌐 浏览市场</button>
+    </div>
+  </div>
+  
+  <!-- 技能创建向导 -->
+  <div class="skill-wizard-overlay" id="skillWizardOverlay" style="display:none;" onclick="closeSkillWizard(event)">
+    <div class="skill-wizard" onclick="event.stopPropagation()">
+      <div class="skill-wizard-header">
+        <span>🧙‍♂️ 创建新技能</span>
+        <span class="skill-wizard-close" onclick="closeSkillWizard()">✕</span>
+      </div>
+      
+      <!-- 步骤指示器 -->
+      <div class="skill-wizard-steps">
+        <div class="wizard-step active" data-step="1">
+          <span class="step-num">1</span>
+          <span class="step-label">基本信息</span>
+        </div>
+        <div class="wizard-step" data-step="2">
+          <span class="step-num">2</span>
+          <span class="step-label">技能内容</span>
+        </div>
+        <div class="wizard-step" data-step="3">
+          <span class="step-num">3</span>
+          <span class="step-label">资源配置</span>
+        </div>
+        <div class="wizard-step" data-step="4">
+          <span class="step-num">4</span>
+          <span class="step-label">确认创建</span>
+        </div>
+      </div>
+      
+      <!-- 步骤内容 -->
+      <div class="skill-wizard-content">
+        <!-- 步骤1：基本信息 -->
+        <div class="wizard-panel active" data-panel="1">
+          <div class="wizard-form-group">
+            <label>技能名称 <span class="required">*</span></label>
+            <input type="text" id="swName" class="wizard-input" placeholder="my-awesome-skill" maxlength="64">
+            <span class="input-hint">仅支持小写字母、数字和连字符，将自动转换格式</span>
+          </div>
+          <div class="wizard-form-group">
+            <label>一句话描述 <span class="required">*</span></label>
+            <input type="text" id="swDesc" class="wizard-input" placeholder="描述这个技能的功能和适用场景...">
+            <span class="input-hint">这段描述决定了 AI 何时会触发使用此技能</span>
+          </div>
+          <div class="wizard-form-group">
+            <label>触发场景/关键词</label>
+            <textarea id="swTriggers" class="wizard-textarea" rows="3" placeholder="例如：
+- 当用户说：帮我整理笔记
+- 当需要处理 PDF 文件时
+- 当用户询问天气相关问题时"></textarea>
+          </div>
+        </div>
+        
+        <!-- 步骤2：技能内容 -->
+        <div class="wizard-panel" data-panel="2">
+          <div class="wizard-form-group">
+            <label>结构模板</label>
+            <select id="swTemplate" class="wizard-select" onchange="applySkillTemplate()">
+              <option value="blank">空白模板（从头开始）</option>
+              <option value="workflow">工作流程型（适合多步骤任务）</option>
+              <option value="tool">工具集合型（适合多种操作）</option>
+              <option value="reference">参考指南型（适合标准和规范）</option>
+              <option value="capability">能力模块型（适合多功能集成）</option>
+            </select>
+          </div>
+          <div class="wizard-form-group">
+            <label>SKILL.md 内容 <span class="required">*</span></label>
+            <textarea id="swContent" class="wizard-textarea code" rows="14" placeholder="# 技能标题
+
+## 概述
+简要说明这个技能能做什么。
+
+## 使用方法
+详细描述使用步骤和注意事项...
+"></textarea>
+            <span class="input-hint">使用 Markdown 格式编写，支持代码块、列表等</span>
+          </div>
+        </div>
+        
+        <!-- 步骤3：资源配置 -->
+        <div class="wizard-panel" data-panel="3">
+          <div class="wizard-form-group">
+            <label>选择需要的资源类型</label>
+            <div class="resource-options">
+              <label class="resource-option">
+                <input type="checkbox" id="resScripts" value="scripts">
+                <div class="resource-card">
+                  <div class="resource-icon">📜</div>
+                  <div class="resource-title">scripts/</div>
+                  <div class="resource-desc">存放可执行脚本（Python/Bash等）</div>
+                </div>
+              </label>
+              <label class="resource-option">
+                <input type="checkbox" id="resReferences" value="references">
+                <div class="resource-card">
+                  <div class="resource-icon">📚</div>
+                  <div class="resource-title">references/</div>
+                  <div class="resource-desc">存放参考文档和详细指南</div>
+                </div>
+              </label>
+              <label class="resource-option">
+                <input type="checkbox" id="resAssets" value="assets">
+                <div class="resource-card">
+                  <div class="resource-icon">🎨</div>
+                  <div class="resource-title">assets/</div>
+                  <div class="resource-desc">存放模板、图片等资源文件</div>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div class="wizard-form-group">
+            <label>存储位置</label>
+            <div class="storage-options">
+              <label class="storage-option">
+                <input type="radio" name="storage" value="user" checked>
+                <span>👤 User Skills（用户创建，基本信任）</span>
+              </label>
+              <label class="storage-option">
+                <input type="radio" name="storage" value="market">
+                <span>🌐 Market Skills（外部下载，需安全检查）</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 步骤4：确认创建 -->
+        <div class="wizard-panel" data-panel="4">
+          <div class="wizard-preview">
+            <h4>📋 技能信息预览</h4>
+            <div class="preview-item">
+              <span class="preview-label">名称：</span>
+              <span id="previewName" class="preview-value"></span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">描述：</span>
+              <span id="previewDesc" class="preview-value"></span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">路径：</span>
+              <code id="previewPath" class="preview-value"></code>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">资源：</span>
+              <span id="previewResources" class="preview-value"></span>
+            </div>
+          </div>
+          <div class="wizard-progress" id="wizardProgress" style="display:none;">
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+            <span class="progress-text">正在创建...</span>
+          </div>
+          <div class="wizard-result" id="wizardResult" style="display:none;">
+            <div class="result-icon">✅</div>
+            <div class="result-message">技能创建成功！</div>
+            <div class="result-path" id="resultPath"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 底部按钮 -->
+      <div class="skill-wizard-footer">
+        <button class="wizard-btn secondary" id="swPrevBtn" onclick="wizardPrev()" style="display:none;">上一步</button>
+        <button class="wizard-btn primary" id="swNextBtn" onclick="wizardNext()">下一步</button>
+        <button class="wizard-btn success" id="swCreateBtn" onclick="wizardCreate()" style="display:none;">创建技能</button>
+        <button class="wizard-btn primary" id="swFinishBtn" onclick="closeSkillWizard()" style="display:none;">完成</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -684,59 +1187,263 @@ function pickModel(btn) {
 }
 buildModelBar();
 
-// ===== 历史持久化 =====
-// sessions: [{id, q, t, model, history:[{role,content},...], feedHtml}]
-let sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-let curId = null;   // 当前对话 id
-let history = [];   // 当前对话的 messages history
+// ===== 服务端会话持久化 =====
+// sessions: [{id, title, updated_at, message_count, model}]
+let sessions = [];      // 从服务端加载的会话列表
+let sessionCache = {};  // 会话详细数据缓存 {id -> {messages, feedHtml}}
+let curId = null;       // 当前对话 id
+let history = [];       // 当前对话的 messages history（包含元数据）
+let currentRound = 1;   // 当前轮次，用于重建 UI
 
-function saveSessions() {
-  // 只保留最近 30 条，每条 feedHtml 截断避免超出 localStorage 限制
-  const toSave = sessions.slice(-30).map(s => ({
-    ...s,
-    feedHtml: (s.feedHtml || '').slice(0, 20000),
-  }));
-  try { localStorage.setItem('sessions', JSON.stringify(toSave)); } catch(e) {}
+// History 条目格式：
+// { role: 'user', content: '...' }
+// { role: 'assistant', content: '...', metadata: { type: 'reasoning', round: 1 } }
+// { role: 'assistant', content: '', tool_calls: [...], metadata: { type: 'tool_calls', round: 1 } }
+// { role: 'tool', name: '...', content: '...', tool_call_id: '...' }
+// { role: 'system', content: '...', metadata: { type: 'announce' } }
+
+// 从服务端加载会话列表
+async function loadSessionsFromServer() {
+  try {
+    const res = await fetch('/api/sessions');
+    const data = await res.json();
+    sessions = data.sessions || [];
+    renderHistory();
+  } catch (e) {
+    console.error('Failed to load sessions:', e);
+    sessions = [];
+  }
+}
+
+// 从服务端加载单个会话详情
+async function loadSessionDetail(id) {
+  // 检查缓存（只缓存有消息的）
+  if (sessionCache[id] && sessionCache[id].messages && sessionCache[id].messages.length > 0) {
+    return sessionCache[id];
+  }
+  
+  try {
+    const res = await fetch(`/api/sessions/${id}`);
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    
+    // 缓存
+    sessionCache[id] = {
+      messages: data.messages || [],
+      feedHtml: ''  // feedHtml 是 UI 状态，服务端不存储
+    };
+    return sessionCache[id];
+  } catch (e) {
+    console.error('Failed to load session detail:', e);
+    return null;
+  }
+}
+
+// 保存当前会话到服务端
+async function saveCurrentSession() {
+  if (!curId) return;
+  
+  const feed = document.getElementById('feed');
+  const feedHtml = feed ? feed.innerHTML : '';
+  
+  // 先更新缓存（同步）
+  const messagesCopy = [...history];
+  
+  sessionCache[curId] = {
+    messages: messagesCopy,
+    feedHtml: feedHtml
+  };
+  
+  try {
+    // 异步保存到服务端
+    await fetch(`/api/sessions/${curId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: messagesCopy,
+        title: sessions.find(s => s.id === curId)?.title
+      })
+    });
+    
+    // 更新本地列表中的元数据
+    const idx = sessions.findIndex(s => s.id === curId);
+    if (idx >= 0) {
+      sessions[idx].message_count = messagesCopy.length;
+      sessions[idx].updated_at = Date.now();
+    }
+  } catch (e) {
+    console.error('Failed to save session:', e);
+  }
 }
 
 function renderHistory() {
-  document.getElementById('hlist').innerHTML = [...sessions].reverse().map(s =>
+  if (sessions.length === 0) {
+    document.getElementById('hlist').innerHTML = '<div style="padding:20px;color:var(--text2);text-align:center;font-size:12px">暂无历史对话</div>';
+    return;
+  }
+  
+  const html = sessions.map(s =>
     `<div class="hi${s.id===curId?' active':''}" onclick="loadSession('${s.id}')">
       <span class="del" onclick="event.stopPropagation();delSession('${s.id}')">×</span>
-      <div class="q">${esc(s.q)}</div>
-      <div class="m">${new Date(s.t).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}
-        · <span style="color:var(--accent);opacity:.7">${s.model.split('-').slice(-1)[0]}</span>
+      <div class="q">${esc(s.title || '新对话')}</div>
+      <div class="m">${new Date(s.updated_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}
+        · <span style="color:var(--accent);opacity:.7">${(s.model || '').split('-').slice(-1)[0] || 'AI'}</span>
+        · ${s.message_count || 0}条
       </div>
     </div>`
   ).join('');
+  
+  document.getElementById('hlist').innerHTML = html;
 }
 
 function loadSession(id) {
   const s = sessions.find(x => x.id === id);
   if (!s) return;
+  
+  // 先保存当前会话（异步，不阻塞）
+  if (curId && curId !== id) {
+    saveCurrentSession().catch(() => {});
+  }
+  
   curId = id;
-  history = s.history || [];
+  
+  // 加载会话详情（异步）
+  loadSessionDetail(id).then(detail => {
+    if (detail) {
+      history = detail.messages || [];
+      currentRound = 1; // 重置轮次
+      // 计算当前最大轮次
+      history.forEach(m => {
+        if (m.metadata?.round && m.metadata.round > currentRound) {
+          currentRound = m.metadata.round;
+        }
+      });
+      
+      const feed = document.getElementById('feed');
+      // 如果有缓存的 feedHtml 则使用，否则显示空
+      if (detail.feedHtml) {
+        feed.innerHTML = detail.feedHtml;
+      } else {
+        feed.innerHTML = emptyHtml();
+        // 重建 UI：从历史消息渲染
+        rebuildFeedFromHistory(history);
+      }
+    } else {
+      history = [];
+      document.getElementById('feed').innerHTML = emptyHtml();
+    }
+    renderHistory();
+  }).catch((e) => {
+    history = [];
+    document.getElementById('feed').innerHTML = emptyHtml();
+    renderHistory();
+  });
+}
+
+// 从历史消息重建 UI（当 feedHtml 丢失时）
+function rebuildFeedFromHistory(msgs) {
   const feed = document.getElementById('feed');
-  feed.innerHTML = s.feedHtml || emptyHtml();
-  renderHistory();
+  feed.innerHTML = '';
+  
+  let lastRound = 0;
+  
+  // 正序遍历消息（时间顺序：旧 → 新），让旧消息在上，新消息在下
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i];
+    if (!msg) continue;
+    
+    const metadata = msg.metadata || {};
+    const round = metadata.round || 1;
+    const type = metadata.type || '';
+    
+    
+    if (msg.role === 'user') {
+      // 用户消息
+      const userDiv = document.createElement('div');
+      userDiv.className = 'ev-user';
+      userDiv.innerHTML = `<div class="bbl">${esc(msg.content || '')}</div>`;
+      feed.appendChild(userDiv);
+    } 
+    else if (msg.role === 'assistant') {
+      // 助手消息
+      if (type === 'reasoning' && msg.content) {
+        // 深度思考
+        append('reasoning', { content: msg.content });
+      }
+      else if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // 工具调用
+        const calls = msg.tool_calls.map(tc => ({
+          id: tc.id,
+          name: tc.function?.name || tc.name,
+          args: tc.function?.arguments ? (() => { 
+            try { return JSON.parse(tc.function.arguments); } 
+            catch(e) { return tc.function.arguments; } 
+          })() : tc.args
+        }));
+        append('tool_calls', { calls, round: round });
+        lastRound = round;
+      }
+      else if (type === 'final' || (!type && msg.content)) {
+        // 最终回复（检查是否是最后的 assistant 消息）
+        const hasLaterFinal = msgs.slice(i + 1).some(m => 
+          m.role === 'assistant' && m.metadata?.type === 'final'
+        );
+        if (!hasLaterFinal || type === 'final') {
+          append('done', { content: msg.content });
+        }
+      }
+    }
+    else if (msg.role === 'tool') {
+      // 工具结果
+      append('tool_result', { 
+        name: msg.name, 
+        content: msg.content, 
+        tool_id: msg.tool_call_id 
+      });
+    }
+    else if (msg.role === 'system' && type === 'announce') {
+      // 子Agent通知
+      append('announce', { content: msg.content });
+    }
+  }
+  scrollToBottom();
 }
 
 function delSession(id) {
-  sessions = sessions.filter(s => s.id !== id);
-  saveSessions();
-  if (curId === id) {
-    curId = null; history = [];
-    document.getElementById('feed').innerHTML = emptyHtml();
-  }
-  renderHistory();
+  fetch(`/api/sessions/${id}/delete`, { method: 'POST' })
+    .then(() => {
+      sessions = sessions.filter(s => s.id !== id);
+      delete sessionCache[id];
+      
+      if (curId === id) {
+        curId = null; 
+        history = [];
+        document.getElementById('feed').innerHTML = emptyHtml();
+      }
+      renderHistory();
+    })
+    .catch(e => console.error('Failed to delete session:', e));
 }
 
 function clearAllHistory() {
-  sessions = []; curId = null; history = [];
-  saveSessions();
-  document.getElementById('feed').innerHTML = emptyHtml();
-  renderHistory();
+  if (!confirm('确定要清空所有历史对话吗？')) return;
+  
+  fetch('/api/sessions/clear_all')
+    .then(() => {
+      sessions = []; 
+      sessionCache = {};
+      curId = null; 
+      history = [];
+      document.getElementById('feed').innerHTML = emptyHtml();
+      renderHistory();
+    })
+    .catch(e => console.error('Failed to clear sessions:', e));
 }
+
+// 初始化：加载会话列表
+loadSessionsFromServer();
 
 // ===== 运行状态 =====
 let running = false;
@@ -751,14 +1458,13 @@ function stopRun() {
   if (es) { es.close(); es = null; }
   setRunning(false);
   append('stopped', {});
-  // 停止时把本轮 user query 也存进 history，保留上下文
+  // 停止时保存最终状态（用户消息已在 send() 时保存）
   if (curQuery) {
-    history.push({ role: 'user', content: curQuery });
     history.push({ role: 'assistant', content: '[已手动停止]' });
     curQuery = '';
   }
-  const s = sessions.find(x => x.id === curId);
-  if (s) { s.history = [...history]; s.feedHtml = document.getElementById('feed').innerHTML; saveSessions(); }
+  // 异步保存
+  saveCurrentSession().catch(() => {});
 }
 
 function setRunning(v) {
@@ -783,23 +1489,23 @@ function newChat(e) {
     if (curRunId) {
       fetch(`/stop?rid=${curRunId}`).catch(() => {});
     }
-    // 保存当前对话状态（如果已存在）
+    // 保存当前对话状态（如果已存在，用户消息已在 send() 时保存）
     if (curId && curQuery) {
-      history.push({ role: 'user', content: curQuery });
       history.push({ role: 'assistant', content: '[已停止]' });
-      const s = sessions.find(x => x.id === curId);
-      if (s) { 
-        s.history = [...history]; 
-        s.feedHtml = document.getElementById('feed').innerHTML; 
-        saveSessions(); 
-      }
+      saveCurrentSession().catch(() => {});
     }
   }
   // 开新空白对话
-  curId = null; history = []; curQuery = '';
+  curId = null; history = []; curQuery = ''; currentRound = 1;
   document.getElementById('feed').innerHTML = emptyHtml();
   renderHistory();
   setDot('', '就绪');
+  // 重置 token 显示
+  const tokenCounter = document.getElementById('tokenCounter');
+  if (tokenCounter) {
+    tokenCounter.style.display = 'none';
+    tokenCounter.textContent = '···';
+  }
 }
 
 async function send() {
@@ -814,11 +1520,30 @@ async function send() {
   curQuery = q || '[文件]';
 
   // 如果没有当前对话，新建 session；否则复用当前 session（多轮追加）
-  if (!curId) {
-    curId = 'sess_' + Date.now();
-    sessions.push({ id: curId, q: curQuery, t: Date.now(), model: selModel, history: [], feedHtml: '' });
+  let sid = curId;
+  if (!sid) {
+    // 新会话：清空历史，重置轮次
+    history = [];
+    currentRound = 1;
+    // 创建新会话（调用服务端 API）
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: curQuery.slice(0, 30), model: selModel })
+      });
+      const data = await res.json();
+      sid = data.id;
+      curId = sid;
+      sessions.unshift({ id: sid, title: curQuery.slice(0, 30), updated_at: Date.now(), message_count: 0, model: selModel });
+      renderHistory();
+    } catch (e) {
+      console.error('Failed to create session:', e);
+      // 降级：使用本地临时 ID
+      sid = 'sess_' + Date.now();
+      curId = sid;
+    }
   }
-  const sid = curId;
 
   const emp = document.getElementById('emp');
   if (emp) emp.remove();
@@ -829,15 +1554,21 @@ async function send() {
     const fileList = attachedFiles.map(f => `[${f.file.name}]`).join(' ');
     userContent = (q ? q + '\n\n' : '') + fileList;
   }
+  
+  // 立即保存用户消息到 history（确保在最前面）
+  history.push({ role: 'user', content: userContent });
   append('user', { content: userContent });
 
   setRunning(true);
-  curRunId = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  // 使用会话ID(sid)作为请求ID，支持消息累积和会话级别摘要
+  // curRunId仅用于停止任务，不用于消息累积
+  curRunId = sid;  // 复用会话ID，确保消息累积到同一会话
 
   const prov = PROVIDERS[selProvider];
   
   console.log(`[send] Provider: ${selProvider}, Model: ${selModel}`);
   console.log(`[send] Files: ${attachedFiles.length}`);
+  console.log(`[send] Session ID: ${sid}`);
   
   // 构建请求体
   const requestBody = {
@@ -928,41 +1659,121 @@ async function send() {
 
 function handle(data, query, sid) {
   switch (data.event) {
-    case 'start':    setDot('ok', '已连接'); break;
-    case 'thinking': append('thinking', data); break;
-    case 'reasoning': append('reasoning', data); break;
-    case 'tool_calls': append('tool_calls', data); break;
-    case 'tool_result': append('tool_result', data); break;
-    case 'subagent_announce': append('announce', data); break;
-    case 'waiting_subagents': append('waiting', data); break;
+    case 'start':    
+      setDot('ok', '已连接'); 
+      currentRound = data.round || currentRound;
+      break;
+    case 'token_usage':
+      updateTokenDisplay(data);
+      break;
+    case 'thinking': 
+      append('thinking', data); 
+      currentRound = data.round || currentRound;
+      break;
+    case 'reasoning': 
+      append('reasoning', data); 
+      // 直接保存到 history，保持顺序
+      history.push({
+        role: 'assistant',
+        content: data.content,
+        metadata: { type: 'reasoning', round: data.round || currentRound }
+      });
+      break;
+    case 'tool_calls': 
+      append('tool_calls', data); 
+      // 保存 tool_calls 到 history
+      if (data.calls) {
+        history.push({
+          role: 'assistant',
+          content: '',
+          tool_calls: data.calls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { 
+              name: tc.name, 
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args)
+            }
+          })),
+          metadata: { type: 'tool_calls', round: data.round || currentRound }
+        });
+      }
+      break;
+    case 'tool_result': 
+      append('tool_result', data); 
+      // 保存 tool_result 到 history
+      history.push({
+        role: 'tool',
+        tool_call_id: data.tool_id,
+        name: data.name,
+        content: data.content
+      });
+      break;
+    case 'subagent_announce': 
+      append('announce', data); 
+      // 保存 announce 到 history
+      history.push({
+        role: 'system',
+        content: data.content,
+        metadata: { type: 'announce', round: currentRound }
+      });
+      break;
+    case 'waiting_subagents': 
+      append('waiting', data); 
+      break;
     case 'stopped':
       append('stopped', {});
-      es.close(); setRunning(false);
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'done':
       append('done', data);
-      history.push({ role: 'user', content: query });
-      history.push({ role: 'assistant', content: data.content });
+      // 保存最终回复（用户消息已在 send() 时保存）
+      history.push({ 
+        role: 'assistant', 
+        content: data.content,
+        metadata: { type: 'final', round: currentRound }
+      });
       curQuery = '';
-      // 更新持久化
-      const s = sessions.find(x => x.id === sid);
-      if (s) {
-        s.history = [...history];
-        s.feedHtml = document.getElementById('feed').innerHTML;
-        saveSessions();
-      }
-      es.close(); setRunning(false);
+      currentRound = 1; // 重置轮次
+      // 异步保存到服务端
+      saveCurrentSession().then(() => {
+        const s = sessions.find(x => x.id === sid);
+        if (s) {
+          s.message_count = history.length;
+          s.updated_at = Date.now();
+          renderHistory();
+        }
+      }).catch(() => {});
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'error':
       append('err', data);
-      es.close(); setRunning(false);
+      if (es) { es.close(); es = null; }
+      setRunning(false);
       break;
     case 'todo':
       updateTodoList(data.todos || []);
       break;
     case 'end':
-      es.close(); break;
+      if (es) { es.close(); es = null; }
+      break;
   }
+}
+
+// ===== Token 显示 =====
+function updateTokenDisplay(data) {
+  const counter = document.getElementById('tokenCounter');
+  if (!counter) return;
+  
+  // 显示计数器
+  counter.style.display = 'inline-block';
+  
+  // 更新内容
+  counter.textContent = `ᵀᵒᵋᵉₙꞰ ${data.formatted} / ${data.formatted_limit} (${data.percentage}%)`;
+  
+  // 更新状态样式
+  counter.className = 'token-counter ' + (data.status || 'normal');
 }
 
 // ===== 渲染 =====
@@ -1010,6 +1821,10 @@ function append(type, data) {
   } else if (type === 'waiting') {
     el.className += ' ev-wait';
     el.innerHTML = `<div class="lbl">⏳ ${esc(data.message || '等待子Agent...')}</div>`;
+  } else if (type === 'text') {
+    // 纯文本回复（用于重建历史时）
+    el.className += ' ev-done';
+    el.innerHTML = `<div class="lbl">✅ Agent 回复</div><div class="body">${mdLite(esc(data.text || data.content || ''))}</div>`;
   } else if (type === 'done') {
     el.className += ' ev-done';
     el.innerHTML = `<div class="lbl">✅ Agent 回复</div><div class="body">${mdLite(esc(data.content))}</div>`;
@@ -1021,12 +1836,12 @@ function append(type, data) {
     el.innerHTML = `❌ 错误：${esc(data.message)}`;
   }
 
-  feed.appendChild(el);
-  feed.scrollTop = feed.scrollHeight;
+  feed.appendChild(el);  // 添加到末尾（旧消息在上，新消息在下）
+}
 
-  // 实时保存 feedHtml
-  const s = sessions.find(x => x.id === curId);
-  if (s) { s.feedHtml = feed.innerHTML; saveSessions(); }
+function scrollToBottom() {
+  const feed = document.getElementById('feed');
+  if (feed) feed.scrollTop = feed.scrollHeight;
 }
 
 function emptyHtml() {
@@ -1071,12 +1886,7 @@ function resize(el) { el.style.height='auto'; el.style.height=Math.min(el.scroll
 ta.addEventListener('input', () => resize(ta));
 ta.addEventListener('keydown', e => { if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();send();} });
 
-// 初始化：恢复上次对话
-renderHistory();
-if (sessions.length > 0) {
-  const last = sessions[sessions.length - 1];
-  loadSession(last.id);
-}
+// 初始化：会话列表已从服务端加载（见 loadSessionsFromServer）
 // ===== 定时任务面板 =====
 let cronModalOpen = false;
 
@@ -1419,6 +2229,478 @@ function toggleTodoPanel() {
   const panel = document.getElementById('todoPanel');
   const isVisible = panel.style.display === 'block';
   panel.style.display = isVisible ? 'none' : 'block';
+}
+
+// 技能面板切换
+function toggleSkillsPanel() {
+  const panel = document.getElementById('skillsPanel');
+  const isVisible = panel.style.display === 'flex';
+  
+  if (!isVisible) {
+    panel.style.display = 'flex';
+    loadSkills();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+// 加载技能列表
+async function loadSkills() {
+  const contentEl = document.getElementById('skillsContent');
+  contentEl.innerHTML = '<div class="skills-loading">加载技能列表...</div>';
+  
+  try {
+    const response = await fetch('/api/skills');
+    const data = await response.json();
+    
+    if (data.error) {
+      contentEl.innerHTML = `<div class="skills-empty">加载失败: ${data.error}</div>`;
+      return;
+    }
+    
+    renderSkills(data.skills);
+  } catch (err) {
+    contentEl.innerHTML = `<div class="skills-empty">加载失败: ${err.message}</div>`;
+  }
+}
+
+// 渲染技能列表
+function renderSkills(skills) {
+  const contentEl = document.getElementById('skillsContent');
+  
+  const categories = {
+    system: { 
+      title: '📦 System Skills', 
+      class: 'system', 
+      desc: '系统内置，完全信任',
+      emptyHint: '系统技能由官方提供，开箱即用'
+    },
+    user: { 
+      title: '👤 User Skills', 
+      class: 'user', 
+      desc: '用户创建，基本信任',
+      emptyHint: '暂无用户技能。点击底部"创建技能"按钮创建自己的技能',
+      showCreateHint: true
+    },
+    market: { 
+      title: '🌐 Market Skills', 
+      class: 'market', 
+      desc: '外部下载，需安全检查',
+      emptyHint: '暂无外部技能。点击底部"浏览市场"按钮查找安装',
+      showMarketHint: true
+    },
+    legacy: { 
+      title: '⚠️ Legacy Skills', 
+      class: '', 
+      desc: '遗留兼容',
+      emptyHint: '暂无遗留技能'
+    }
+  };
+  
+  let html = '';
+  let hasAnySkill = false;
+  
+  for (const [cat, info] of Object.entries(categories)) {
+    const items = skills[cat] || [];
+    const isEmpty = items.length === 0;
+    
+    // 只显示非空的分类，或者 user/market 显示空提示
+    if (isEmpty && !info.showCreateHint && !info.showMarketHint) continue;
+    
+    hasAnySkill = hasAnySkill || !isEmpty;
+    
+    html += `
+      <div class="skills-category">
+        <div class="skills-category-title ${info.class}">
+          ${info.title}
+          <span class="badge">${items.length}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text3); margin-bottom: 10px; padding-left: 4px;">
+          ${info.desc}
+        </div>
+    `;
+    
+    if (!isEmpty) {
+      // 显示技能列表
+      for (const skill of items) {
+        const trustClass = skill.trust_level || 'system';
+        const trustLabel = { system: 'SYSTEM', user: 'USER', market: 'MARKET' }[trustClass] || trustClass;
+        
+        html += `
+          <div class="skill-item">
+            <div class="skill-name">${escapeHtml(skill.name)}</div>
+            <div class="skill-desc">${escapeHtml(skill.description)}</div>
+            <div class="skill-meta">
+              <span class="skill-trust-badge ${trustClass}">${trustLabel}</span>
+              <code style="font-size: 10px; color: var(--text3);">${escapeHtml(skill.path)}</code>
+            </div>
+          </div>
+        `;
+      }
+    } else if (info.showCreateHint) {
+      // User Skills 为空时的创建提示
+      html += `
+        <div class="skills-empty">
+          <div>👋 还没有用户技能</div>
+          <div class="skills-empty-hint">点击底部"创建技能"开始制作自己的技能</div>
+        </div>
+        <div class="skill-create-hint">
+          <strong>💡 快速创建：</strong><br>
+          <code>python skills/system/skill-creator/scripts/init_skill.py my-skill --path skills/user</code>
+        </div>
+      `;
+    } else if (info.showMarketHint) {
+      // Market Skills 为空时的市场提示
+      html += `
+        <div class="skills-empty">
+          <div>🌐 还没有外部技能</div>
+          <div class="skills-empty-hint">从社区下载技能或点击"浏览市场"查看推荐</div>
+        </div>
+        <div class="skill-create-hint">
+          <strong>📥 安装示例：</strong><br>
+          下载 .skill 文件到 <code>skills/market/</code> 并解压
+        </div>
+      `;
+    }
+    
+    html += '</div>';
+  }
+  
+  if (html === '') {
+    html = '<div class="skills-empty">暂无技能</div>';
+  }
+  
+  contentEl.innerHTML = html;
+}
+
+// 创建新技能
+// ========== 技能创建向导 ==========
+let wizardCurrentStep = 1;
+const wizardTotalSteps = 4;
+
+function openSkillWizard() {
+  document.getElementById('skillWizardOverlay').style.display = 'flex';
+  wizardCurrentStep = 1;
+  updateWizardUI();
+  resetWizardForm();
+}
+
+function closeSkillWizard(e) {
+  // 如果点击的是关闭按钮或遮罩层本身，或者强制关闭
+  if (!e || e.target === document.getElementById('skillWizardOverlay') || e.type === 'click') {
+    document.getElementById('skillWizardOverlay').style.display = 'none';
+    resetWizardForm();
+  }
+}
+
+function resetWizardForm() {
+  document.getElementById('swName').value = '';
+  document.getElementById('swDesc').value = '';
+  document.getElementById('swTriggers').value = '';
+  document.getElementById('swContent').value = '';
+  document.getElementById('swTemplate').value = 'blank';
+  document.getElementById('resScripts').checked = false;
+  document.getElementById('resReferences').checked = false;
+  document.getElementById('resAssets').checked = false;
+  document.querySelector('input[name="storage"][value="user"]').checked = true;
+  
+  // 重置结果状态
+  document.getElementById('wizardProgress').style.display = 'none';
+  document.getElementById('wizardResult').style.display = 'none';
+  document.querySelector('.wizard-preview').style.display = 'block';
+}
+
+function updateWizardUI() {
+  // 更新步骤指示器
+  document.querySelectorAll('.wizard-step').forEach((step, index) => {
+    const stepNum = index + 1;
+    step.classList.remove('active', 'completed');
+    if (stepNum === wizardCurrentStep) {
+      step.classList.add('active');
+    } else if (stepNum < wizardCurrentStep) {
+      step.classList.add('completed');
+    }
+  });
+  
+  // 更新面板显示
+  document.querySelectorAll('.wizard-panel').forEach((panel, index) => {
+    panel.classList.toggle('active', index + 1 === wizardCurrentStep);
+  });
+  
+  // 更新按钮状态
+  document.getElementById('swPrevBtn').style.display = wizardCurrentStep > 1 ? 'block' : 'none';
+  document.getElementById('swNextBtn').style.display = wizardCurrentStep < 4 ? 'block' : 'none';
+  document.getElementById('swCreateBtn').style.display = wizardCurrentStep === 4 ? 'block' : 'none';
+  document.getElementById('swFinishBtn').style.display = 'none';
+  
+  // 第4步更新预览
+  if (wizardCurrentStep === 4) {
+    updateWizardPreview();
+  }
+}
+
+function wizardNext() {
+  // 验证当前步骤
+  if (wizardCurrentStep === 1) {
+    const name = document.getElementById('swName').value.trim();
+    const desc = document.getElementById('swDesc').value.trim();
+    if (!name) {
+      alert('请输入技能名称');
+      return;
+    }
+    if (!desc) {
+      alert('请输入技能描述');
+      return;
+    }
+  } else if (wizardCurrentStep === 2) {
+    const content = document.getElementById('swContent').value.trim();
+    if (!content) {
+      alert('请输入技能内容');
+      return;
+    }
+  }
+  
+  if (wizardCurrentStep < wizardTotalSteps) {
+    wizardCurrentStep++;
+    updateWizardUI();
+  }
+}
+
+function wizardPrev() {
+  if (wizardCurrentStep > 1) {
+    wizardCurrentStep--;
+    updateWizardUI();
+  }
+}
+
+function updateWizardPreview() {
+  const name = document.getElementById('swName').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const desc = document.getElementById('swDesc').value.trim();
+  const storage = document.querySelector('input[name="storage"]:checked').value;
+  
+  const resources = [];
+  if (document.getElementById('resScripts').checked) resources.push('scripts');
+  if (document.getElementById('resReferences').checked) resources.push('references');
+  if (document.getElementById('resAssets').checked) resources.push('assets');
+  
+  document.getElementById('previewName').textContent = name || '-';
+  document.getElementById('previewDesc').textContent = desc || '-';
+  document.getElementById('previewPath').textContent = `skills/${storage}/${name}/`;
+  document.getElementById('previewResources').textContent = resources.length > 0 ? resources.join(', ') : '无';
+}
+
+function applySkillTemplate() {
+  const template = document.getElementById('swTemplate').value;
+  const name = document.getElementById('swName').value.trim() || 'my-skill';
+  const title = name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  
+  const templates = {
+    blank: '',
+    workflow: `# ${title}
+
+## 概述
+简要说明这个技能的工作流程和目标。
+
+## 决策流程
+根据用户请求判断执行路径：
+
+1. **场景A**：当用户需要...时
+   - 执行步骤1
+   - 执行步骤2
+
+2. **场景B**：当用户需要...时
+   - 执行步骤1
+   - 执行步骤2
+
+## 详细步骤
+
+### 步骤1：准备阶段
+[具体操作说明]
+
+### 步骤2：执行阶段
+[具体操作说明]
+
+### 步骤3：验证阶段
+[具体操作说明]
+
+## 注意事项
+- 重要提示1
+- 重要提示2`,
+    
+    tool: `# ${title}
+
+## 概述
+这个技能提供以下工具/功能：
+
+## 快速开始
+基本使用示例...
+
+## 功能列表
+
+### 功能1：XXX
+**用途**：说明用途
+**示例**：\`命令示例\`
+**输出**：期望的输出结果
+
+### 功能2：YYY
+**用途**：说明用途
+**示例**：\`命令示例\`
+**输出**：期望的输出结果
+
+## 参数说明
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| param1 | string | 参数说明 |
+| param2 | number | 参数说明 |`,
+    
+    reference: `# ${title}
+
+## 概述
+本指南定义了...的标准和规范。
+
+## 核心规范
+
+### 规范1
+详细说明...
+
+### 规范2
+详细说明...
+
+## 最佳实践
+- 实践建议1
+- 实践建议2
+
+## 常见问题
+
+### Q: 问题1？
+A: 答案...
+
+### Q: 问题2？
+A: 答案...`,
+    
+    capability: `# ${title}
+
+## 概述
+这个技能提供以下核心能力：
+
+## 能力清单
+
+### 1. 能力A
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+3. 步骤3
+
+### 2. 能力B
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+
+### 3. 能力C
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+
+## 使用示例
+\`\`\`
+用户：示例请求
+AI：示例响应
+\`\`\``
+  };
+  
+  document.getElementById('swContent').value = templates[template] || '';
+}
+
+async function wizardCreate() {
+  const name = document.getElementById('swName').value.trim();
+  const desc = document.getElementById('swDesc').value.trim();
+  const triggers = document.getElementById('swTriggers').value.trim();
+  const content = document.getElementById('swContent').value.trim();
+  const storage = document.querySelector('input[name="storage"]:checked').value;
+  
+  const resources = [];
+  if (document.getElementById('resScripts').checked) resources.push('scripts');
+  if (document.getElementById('resReferences').checked) resources.push('references');
+  if (document.getElementById('resAssets').checked) resources.push('assets');
+  
+  // 组合完整内容
+  let fullContent = content;
+  if (triggers) {
+    fullContent += '\n\n## 触发场景\n' + triggers.split('\n').map(t => t.trim() && '- ' + t.trim()).filter(Boolean).join('\n');
+  }
+  
+  // 显示进度
+  document.querySelector('.wizard-preview').style.display = 'none';
+  document.getElementById('wizardProgress').style.display = 'block';
+  document.getElementById('swCreateBtn').disabled = true;
+  
+  try {
+    const res = await fetch('/api/skills/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: desc,
+        content: fullContent,
+        resources,
+        category: storage
+      })
+    });
+    
+    const data = await res.json();
+    
+    document.getElementById('wizardProgress').style.display = 'none';
+    
+    if (data.success) {
+      document.getElementById('wizardResult').style.display = 'block';
+      document.getElementById('resultPath').textContent = data.path;
+      
+      // 显示完成按钮，隐藏创建按钮
+      document.getElementById('swCreateBtn').style.display = 'none';
+      document.getElementById('swFinishBtn').style.display = 'block';
+      
+      // 刷新技能列表
+      loadSkills();
+    } else {
+      alert('创建失败：' + (data.error || '未知错误'));
+      document.querySelector('.wizard-preview').style.display = 'block';
+      document.getElementById('swCreateBtn').disabled = false;
+    }
+  } catch (e) {
+    alert('请求失败：' + e.message);
+    document.getElementById('wizardProgress').style.display = 'none';
+    document.querySelector('.wizard-preview').style.display = 'block';
+    document.getElementById('swCreateBtn').disabled = false;
+  }
+}
+
+// 浏览技能市场
+function browseSkillMarket() {
+  const hint = `技能市场（社区推荐）：
+
+📦 可从以下渠道获取技能：
+1. GitHub 搜索：site:github.com *.skill
+2. 社区分享页面
+3. 手动创建自己的技能
+
+⚠️ 安全提示：
+- Market 级技能会自动进行安全检查
+- 安装前建议审查 scripts/ 目录下的代码
+
+详细安装指南请参考 find-skills skill 的文档。`;
+  
+  alert(hint);
+}
+
+// HTML 转义
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function updateTodoList(todos) {

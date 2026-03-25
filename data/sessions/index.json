@@ -1,0 +1,19 @@
+{
+  "sessions": {
+    "sess_1774275026326": {
+      "title": "你好，你是谁",
+      "created_at": 1774275026326,
+      "updated_at": 1774275126828,
+      "message_count": 15,
+      "model": "kimi-k2.5"
+    },
+    "sess_1774340977225": {
+      "title": "分别查询北京、上海、广州的天气",
+      "created_at": 1774340977225,
+      "updated_at": 1774341749230,
+      "message_count": 55,
+      "model": "kimi-k2.5"
+    }
+  },
+  "version": 1
+}

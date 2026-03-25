@@ -14,6 +14,7 @@ import threading
 import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -30,6 +31,18 @@ _HTML_PATH = os.path.join(os.path.dirname(__file__), "web_ui.html")
 # run_id -> stop_event，供前端 /stop 调用
 _active_runs: dict[str, threading.Event] = {}
 _active_lock = threading.Lock()
+
+# 全局 SessionManager 实例（每个 worker 一个）
+_session_manager = None
+
+def _get_session_manager():
+    """获取或创建 SessionManager 单例"""
+    global _session_manager
+    if _session_manager is None:
+        from .session_manager import SessionManager
+        data_dir = Path(__file__).parent.parent / "data" / "sessions"
+        _session_manager = SessionManager(data_dir)
+    return _session_manager
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -82,6 +95,12 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_cron_logs()
         elif path == "/config":
             self._serve_config()
+        elif path == "/api/sessions":
+            self._handle_sessions_list()
+        elif path.startswith("/api/sessions/"):
+            self._handle_session_get(path)
+        elif path == "/api/skills":
+            self._handle_skills_list()
         else:
             self.send_response(404)
             self.end_headers()
@@ -103,6 +122,10 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_cron_post(data)
         elif path == "/run":
             self._handle_run_post(data)
+        elif path.startswith("/api/sessions"):
+            self._handle_session_post(path, data)
+        elif path == "/api/skills/create":
+            self._handle_skill_create(data)
         else:
             self.send_response(404)
             self.end_headers()
@@ -245,7 +268,7 @@ class Handler(BaseHTTPRequestHandler):
                     _run_agent(enriched_query, history, q, stop_event,
                                model=model, base_url=base_url, api_key=api_key,
                                provider_type=provider_type, deployment=deployment, api_version=api_version,
-                               images=images_for_vision)
+                               images=images_for_vision, session_id=run_id)
                 )
             except Exception as e:
                 q.put({"event": "error", "message": str(e)})
@@ -506,7 +529,8 @@ class Handler(BaseHTTPRequestHandler):
                 loop.run_until_complete(
                     _run_agent(query, history, q, stop_event,
                                model=model, base_url=base_url, api_key=api_key,
-                               provider_type=provider_type, deployment=deployment, api_version=api_version)
+                               provider_type=provider_type, deployment=deployment, api_version=api_version,
+                               session_id=run_id)
                 )
             except Exception as e:
                 q.put({"event": "error", "message": str(e)})
@@ -550,7 +574,7 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                      stop_event: threading.Event,
                      model=None, base_url=None, api_key=None,
                      provider_type='openai', deployment=None, api_version=None,
-                     images=None):
+                     images=None, session_id: str = None):
     """运行 Agent，把事件放入队列。stop_event 置位时立即中断。
     
     Args:
@@ -558,6 +582,7 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
         deployment: Azure deployment name
         api_version: Azure API version
         images: 图片列表 [{"name": str, "mime": str, "data": base64_str}]
+        session_id: 会话ID，用于消息累积和摘要生成
     """
 
     def put(**kwargs):
@@ -615,16 +640,31 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             raise ValueError("base_url is required for non-Azure providers")
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-    session_id = str(uuid.uuid4())
+    # 使用传入的 session_id，如果没有则生成新的
+    if session_id is None:
+        session_id = str(uuid.uuid4())
     manager = SubagentManager(session_id=session_id)
+
+    # 父 Agent workspace（默认）
+    from .workspace import _DEFAULT_WORKSPACE
+    parent_workspace = _DEFAULT_WORKSPACE
 
     system_prompt = build_system_prompt()
 
-    def _agent_factory():
+    def _agent_factory(workspace_dir=None):
         from .agent import Agent
-        return Agent(model=model, api_key=api_key, base_url=base_url, depth=1)
+        return Agent(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            workspace_dir=workspace_dir or parent_workspace,
+            depth=1,
+        )
 
-    spawn_tool = create_spawn_tool(session_id, manager, _agent_factory, depth=0)
+    spawn_tool = create_spawn_tool(
+        session_id, manager, _agent_factory,
+        depth=0, parent_workspace=str(parent_workspace),
+    )
     sub_tool   = create_subagents_tool(session_id, manager)
     send_tool  = create_sessions_send_tool(session_id, manager)
     list_tool  = create_agents_list_tool(manager)
@@ -656,10 +696,22 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
                 }
             })
         messages.append({"role": "user", "content": content})
+        user_message_content = query  # 用于 SessionManager
     else:
         messages.append({"role": "user", "content": query})
+        user_message_content = query
 
     put(event="start", model=model)
+    
+    # 使用 SessionManager 记录用户消息（如果提供了 session_id）
+    if session_id:
+        try:
+            session_mgr = _get_session_manager()
+            summary = session_mgr.add_message(session_id, "user", user_message_content)
+            if summary:
+                print(f"[session] Generated summary for {session_id}: {summary[:50]}...", flush=True)
+        except Exception as e:
+            print(f"[session] Error adding user message: {e}", flush=True)
 
     async def exec_tool(tc_id, name, arguments):
         extra = extra_tools.get(name)
@@ -685,6 +737,11 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             return
 
         put(event="thinking", round=round_i + 1)
+
+        # 计算并发送当前上下文的 token 使用量
+        from .token_utils import get_token_usage_info
+        token_info = get_token_usage_info(messages, model)
+        put(event="token_usage", **token_info)
 
         try:
             resp = await client.chat.completions.create(
@@ -780,10 +837,168 @@ async def _run_agent(query: str, history: list, q: "_qmod.Queue",
             continue
 
         # 完成
-        put(event="done", content=msg.content or "")
+        final_content = msg.content or ""
+        put(event="done", content=final_content)
+        
+        # 使用 SessionManager 记录助手回复（如果提供了 session_id）
+        # 这会触发超时检测，如果满足条件会生成摘要
+        if session_id:
+            try:
+                session_mgr = _get_session_manager()
+                summary = session_mgr.add_message(session_id, "assistant", final_content)
+                if summary:
+                    print(f"[session] Generated summary after assistant response: {summary[:50]}...", flush=True)
+            except Exception as e:
+                print(f"[session] Error adding assistant message: {e}", flush=True)
+        
         return
 
     put(event="done", content="[max tool rounds reached]")
+
+
+async def _generate_conversation_summary(messages: list[dict], client=None, model=None) -> None:
+    """
+    生成对话摘要并记录到 Daily Log
+    
+    触发条件：
+    - 有效的 user/assistant 消息 >= 5
+    
+    模式选择（通过环境变量 DAILY_LOG_SUMMARY_MODE 控制）：
+    - rule: 使用规则提取（默认，免费，速度快）
+    - llm:  使用 LLM 生成（消耗 token，质量更好）
+    """
+    from .daily_log import append_to_daily_log
+    from datetime import datetime
+    import os
+    
+    # 获取摘要模式
+    mode = os.getenv("DAILY_LOG_SUMMARY_MODE", "rule").lower()
+    
+    print(f"[daily-log-debug] _generate_conversation_summary called with {len(messages)} messages, mode={mode}", flush=True)
+    
+    # 过滤有效对话消息
+    valid_msgs = []
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        
+        if role in ["user", "assistant"] and content and len(content) > 5:
+            # 排除 reasoning 类型的内容
+            metadata = m.get("metadata", {})
+            if metadata.get("type") not in ["reasoning", "tool_calls"]:
+                valid_msgs.append({"role": role, "content": content[:500]})
+    
+    print(f"[daily-log-debug] Valid messages: {len(valid_msgs)} (need >= 5)", flush=True)
+    
+    # 触发条件：至少5轮有效对话
+    if len(valid_msgs) < 5:
+        print(f"[daily-log-debug] Not enough valid messages, returning", flush=True)
+        return
+    
+    # 只取最近10条，控制 token
+    recent_msgs = valid_msgs[-10:]
+    
+    try:
+        # 根据模式选择摘要生成方式
+        if mode == "llm" and client and model:
+            # LLM 模式：使用 AI 生成摘要
+            summary = await _generate_summary_with_llm(recent_msgs, client, model)
+        else:
+            # Rule 模式：使用规则提取（默认）
+            summary = _generate_summary_with_rule(valid_msgs)
+        
+        # 获取当前时间
+        time_str = datetime.now().strftime("%H:%M")
+        entry = f"[{time_str}] {summary}"
+        
+        # 记录到日志
+        from .daily_log import get_daily_log_path
+        log_path = get_daily_log_path()
+        print(f"[daily-log-debug] Writing to: {log_path}", flush=True)
+        
+        result = append_to_daily_log(entry=entry, section="自动摘要")
+        print(f"[daily-log] Summary recorded ({mode}): {result}, entry: {entry}", flush=True)
+        
+    except Exception as e:
+        print(f"[daily-log] Error generating summary: {e}", flush=True)
+
+
+def _generate_summary_with_rule(valid_msgs: list[dict]) -> str:
+    """使用规则提取摘要（免费、快速）"""
+    # 取最后一条用户消息作为摘要
+    last_user_msg = None
+    for m in reversed(valid_msgs):
+        if m["role"] == "user":
+            last_user_msg = m["content"][:50]
+            break
+    
+    # 统计用户消息数量
+    user_count = sum(1 for m in valid_msgs if m["role"] == "user")
+    
+    if last_user_msg:
+        if user_count >= 10:
+            return f"深入讨论: {last_user_msg}..."
+        elif user_count >= 5:
+            return f"对话: {last_user_msg}..."
+        else:
+            return f"询问: {last_user_msg}..."
+    else:
+        return "对话完成"
+
+
+async def _generate_summary_with_llm(recent_msgs: list[dict], client, model: str) -> str:
+    """使用 LLM 生成摘要（消耗 token，质量更好）"""
+    # 构造对话文本
+    conversation_lines = []
+    for m in recent_msgs:
+        role_display = "用户" if m["role"] == "user" else "助手"
+        content = m["content"][:300]
+        conversation_lines.append(f"{role_display}: {content}")
+    
+    conversation_text = "\n".join(conversation_lines)
+    
+    prompt = f"""请用一句话总结以下对话的核心内容（30字以内）：
+
+{conversation_text}
+
+总结："""
+    
+    try:
+        # 某些模型（如 kimi-k2.5）可能不支持 temperature，尝试不带 temperature 调用
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.3,
+            )
+        except Exception as e:
+            if "temperature" in str(e).lower():
+                # 如果不支持 temperature，重试不带该参数
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=50,
+                )
+            else:
+                raise
+        
+        summary = response.choices[0].message.content.strip()
+        
+        # 清理前缀
+        for prefix in ["总结：", "摘要：", "Summary:", "总结："]:
+            if summary.startswith(prefix):
+                summary = summary[len(prefix):].strip()
+        
+        if summary and len(summary) >= 5:
+            return summary[:50]  # 限制长度
+        else:
+            # 如果 LLM 返回空或太短，fallback 到 rule 模式
+            return _generate_summary_with_rule(recent_msgs)
+            
+    except Exception as e:
+        print(f"[daily-log] LLM summary failed: {e}, fallback to rule mode", flush=True)
+        return _generate_summary_with_rule(recent_msgs)
 
 
 def _img_b64(path: str) -> str | None:
@@ -796,6 +1011,193 @@ def _img_b64(path: str) -> str | None:
         return f"data:{mime};base64,{data}"
     except Exception:
         return None
+
+
+# ============================================================================
+# Session API 处理
+# ============================================================================
+
+def _json_response(self, data: dict, status: int = 200):
+    """发送 JSON 响应"""
+    self.send_response(status)
+    self.send_header("Content-Type", "application/json")
+    self._cors()
+    self.end_headers()
+    self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+
+
+def _handle_sessions_list(self):
+    """GET /api/sessions - 获取会话列表"""
+    from . import session_store
+    sessions = session_store.list_sessions()
+    _json_response(self, {"sessions": sessions})
+
+
+def _handle_session_get(self, path: str):
+    """GET /api/sessions/{id} - 获取单个会话"""
+    from . import session_store
+    
+    # 解析路径 /api/sessions/{id}
+    parts = path.strip("/").split("/")
+    if len(parts) < 3:
+        _json_response(self, {"error": "Invalid session ID"}, 400)
+        return
+    
+    session_id = parts[2]
+    
+    # 特殊处理：clear_all 操作
+    if session_id == "clear_all":
+        count = session_store.clear_all_sessions()
+        _json_response(self, {"cleared": count})
+        return
+    
+    session = session_store.get_session(session_id)
+    if session is None:
+        _json_response(self, {"error": "Session not found"}, 404)
+        return
+    
+    _json_response(self, session)
+
+
+def _handle_session_post(self, path: str, data: dict):
+    """POST /api/sessions 或 /api/sessions/{id} - 创建或更新会话"""
+    from . import session_store
+    
+    # 解析路径
+    parts = path.strip("/").split("/")
+    
+    # POST /api/sessions - 创建新会话
+    if len(parts) < 3:
+        title = data.get("title", "新对话")
+        model = data.get("model", "")
+        session_id = session_store.create_session(title, model)
+        _json_response(self, {"id": session_id, "created": True})
+        return
+    
+    session_id = parts[2]
+    
+    # POST /api/sessions/{id}/delete - 删除会话
+    if len(parts) >= 4 and parts[3] == "delete":
+        success = session_store.delete_session(session_id)
+        _json_response(self, {"success": success})
+        return
+    
+    # POST /api/sessions/{id} - 更新会话
+    messages = data.get("messages", [])
+    title = data.get("title")
+    
+    success = session_store.update_session(session_id, messages, title)
+    if success:
+        _json_response(self, {"success": True, "updated": True})
+    else:
+        _json_response(self, {"error": "Failed to update session"}, 500)
+
+
+def _handle_skills_list(self):
+    """GET /api/skills - 获取技能列表"""
+    try:
+        from .skills import scan_skills
+        skills = scan_skills()
+        
+        # 按类别分组
+        result = {
+            "system": [],
+            "user": [],
+            "market": [],
+            "legacy": []
+        }
+        
+        for skill in skills:
+            category = skill.category or "other"
+            skill_info = {
+                "name": skill.name,
+                "description": skill.description,
+                "path": str(skill.path),
+                "trust_level": skill.trust_level.value,
+                "category": category
+            }
+            if category in result:
+                result[category].append(skill_info)
+            else:
+                result["legacy"].append(skill_info)
+        
+        _json_response(self, {"skills": result})
+    except Exception as e:
+        _json_response(self, {"error": str(e)}, 500)
+
+
+def _handle_skill_create(self, data):
+    """POST /api/skills/create - 创建新技能"""
+    try:
+        import re
+        
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        content = data.get("content", "").strip()
+        resources = data.get("resources", [])
+        category = data.get("category", "user")  # user 或 market
+        
+        # 验证名称
+        if not name:
+            _json_response(self, {"error": "技能名称不能为空"}, 400)
+            return
+        
+        # 规范化名称
+        normalized = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        normalized = re.sub(r"-{2,}", "-", normalized)
+        
+        if not normalized or len(normalized) > 64:
+            _json_response(self, {"error": "技能名称无效（1-64字符，仅支持字母、数字、连字符）"}, 400)
+            return
+        
+        # 确定目标目录
+        project_root = Path(__file__).parent.parent
+        target_dir = project_root / "skills" / category / normalized
+        
+        if target_dir.exists():
+            _json_response(self, {"error": f"技能 '{normalized}' 已存在"}, 400)
+            return
+        
+        # 创建目录
+        target_dir.mkdir(parents=True, exist_ok=False)
+        
+        # 构建 SKILL.md
+        skill_md = f"""---
+name: {normalized}
+description: {description}
+---
+
+{content}
+"""
+        
+        # 写入 SKILL.md
+        (target_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        
+        # 创建资源目录
+        created_resources = []
+        for resource in resources:
+            if resource in ("scripts", "references", "assets"):
+                (target_dir / resource).mkdir(exist_ok=True)
+                created_resources.append(resource)
+        
+        _json_response(self, {
+            "success": True,
+            "name": normalized,
+            "path": str(target_dir.relative_to(project_root)),
+            "resources": created_resources
+        })
+        
+    except Exception as e:
+        _json_response(self, {"error": str(e)}, 500)
+
+
+# 绑定方法到 Handler
+Handler._json_response = _json_response
+Handler._handle_sessions_list = _handle_sessions_list
+Handler._handle_session_get = _handle_session_get
+Handler._handle_session_post = _handle_session_post
+Handler._handle_skills_list = _handle_skills_list
+Handler._handle_skill_create = _handle_skill_create
 
 
 def main():

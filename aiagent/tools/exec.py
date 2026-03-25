@@ -9,6 +9,14 @@ async def _exec_handler(
     cwd: str | None = None,
     timeout: int = 30,
 ) -> str:
+    from . import emit_todo
+    
+    # 显示执行中的命令（截断长命令）
+    cmd_display = command[:50] + "..." if len(command) > 50 else command
+    emit_todo([
+        {"id": "1", "title": f"执行: {cmd_display}", "status": "in_progress"},
+    ])
+    
     try:
         result = subprocess.run(
             command,
@@ -19,9 +27,21 @@ async def _exec_handler(
             text=True,
         )
     except subprocess.TimeoutExpired:
+        emit_todo([
+            {"id": "1", "title": f"执行: {cmd_display}", "status": "error"},
+        ])
         return f"Error: command timed out after {timeout}s\ncommand: {command}"
     except Exception as e:
+        emit_todo([
+            {"id": "1", "title": f"执行: {cmd_display}", "status": "error"},
+        ])
         return f"Error spawning process: {e}"
+    
+    # 命令完成
+    status = "done" if result.returncode == 0 else "error"
+    emit_todo([
+        {"id": "1", "title": f"执行: {cmd_display}", "status": status},
+    ])
 
     parts: list[str] = []
     if result.stdout:

@@ -21,19 +21,45 @@ def create_spawn_tool(
     manager: SubagentManager,
     agent_factory,
     depth: int = 0,
+    parent_workspace: str | None = None,
 ) -> RegisteredTool:
     """创建 sessions_spawn 工具，绑定当前 Agent 上下文。"""
 
-    async def _handler(task: str, label: str = "", model: str | None = None, **_: object) -> str:
+    async def _handler(
+        task: str,
+        label: str = "",
+        model: str | None = None,
+        context_fields: list[str] | None = None,
+        cleanup: str = "archive",
+        **_: object,
+    ) -> str:
+        from .tools import emit_todo
+        
+        # 生成子任务标识
+        sub_label = label or f"子任务-{manager.count_active() + 1}"
+        emit_todo([
+            {"id": f"sub_{sub_label}", "title": f"🔄 {sub_label}", "status": "in_progress"},
+        ])
+        
         result = spawn_subagent(
             task=task,
-            label=label,
+            label=sub_label,
             model=model or manager.session_id,  # 子 Agent 继承父 model
             parent_id=parent_id,
             depth=depth,
             manager=manager,
             agent_factory=agent_factory,
+            parent_workspace=parent_workspace,
+            context_fields=context_fields or ["user_preferences", "current_project", "system"],
+            cleanup_policy=cleanup,
         )
+        
+        # 如果立即出错，标记为错误
+        if result.get("status") == "error":
+            emit_todo([
+                {"id": f"sub_{sub_label}", "title": f"❌ {sub_label}", "status": "error"},
+            ])
+        
         return json.dumps(result, ensure_ascii=False)
 
     return RegisteredTool(
@@ -61,6 +87,16 @@ def create_spawn_tool(
                         "model": {
                             "type": "string",
                             "description": "Model override for the subagent (optional, inherits parent by default).",
+                        },
+                        "context_fields": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Fields from parent memory to inject (default: [\"user_preferences\", \"current_project\", \"system\"]).",
+                        },
+                        "cleanup": {
+                            "type": "string",
+                            "enum": ["immediate", "keep", "archive"],
+                            "description": "Cleanup policy after subagent completes: immediate (delete), keep (retain), archive (move to archive).",
                         },
                     },
                     "required": ["task"],
