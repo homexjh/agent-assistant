@@ -1,7 +1,7 @@
 # 分支历史与提交记录
 
 > 记录项目所有分支的创建、合并、提交历史
-> 最后更新: 2026-03-23
+> 最后更新: 2026-03-25
 
 ---
 
@@ -27,6 +27,14 @@ master (9fbd374)
   │           ├── fix: 删除旧的请求级别摘要逻辑
   │           ├── fix: 前端使用 sid 作为 rid
   │           └── feat: 实现 SessionManager 会话级别摘要
+  │
+  ├── feature/skill-security-tier-20260324 (6b15e39) ← Skill 安全分层 + Web UI 技能管理
+  │     ├── feat: Phase 1 - Skill 安全分层基础实施
+  │     ├── feat: Phase 2 - 添加 research skill 和测试
+  │     ├── feat: Phase 2 - 添加 find-skills skill 和测试
+  │     ├── feat: add skill management panel to Web UI
+  │     ├── feat: enhance skill panel with empty state UX
+  │     └── feat: add visual skill creation wizard
   │
   └── feature/memory-struct-20260320 (aac4adc) ← **已合并**到 feature/todo-list-20260318
         ├── aac4adc feat: Daily Log 自动摘要功能 + Skill 安全计划文档

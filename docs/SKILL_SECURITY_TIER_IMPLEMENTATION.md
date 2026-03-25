@@ -52,6 +52,37 @@ DANGEROUS_PATTERNS = {
 | research | `skills/system/research/SKILL.md` | 4阶段系统化研究法 | ✅ 9个测试 |
 | find-skills | `skills/system/find-skills/SKILL.md` | 技能发现与管理指南 | ✅ 8个测试 |
 
+### Phase 3: Web UI 技能管理面板（全部完成）
+
+| 功能 | 文件 | 说明 |
+|------|------|------|
+| 技能列表 API | `aiagent/serve.py` | GET /api/skills 返回分类技能列表 |
+| 技能面板 UI | `aiagent/web_ui.html` | 分类展示 + 信任级别徽章 |
+| 创建按钮 | `aiagent/web_ui.html` | 空状态提示 + 创建向导入口 |
+
+**Web UI 功能：**
+- 按 System/User/Market 分类展示
+- 信任级别可视化（绿色/蓝色/黄色徽章）
+- 空状态友好提示（User/Market 技能为空时显示引导）
+
+### Phase 4: 可视化技能创建向导（全部完成）
+
+| 功能 | 文件 | 说明 |
+|------|------|------|
+| 向导 UI | `aiagent/web_ui.html` | 4步表单向导，无需编程 |
+| 创建 API | `aiagent/serve.py` | POST /api/skills/create |
+| 模板系统 | `aiagent/web_ui.html` | 5种内置结构模板 |
+
+**向导步骤：**
+1. **基本信息** - 名称、描述、触发场景
+2. **技能内容** - Markdown 编辑器 + 5种模板（空白/工作流程/工具集合/参考指南/能力模块）
+3. **资源配置** - 可视化卡片选择 scripts/references/assets
+4. **确认创建** - 预览 + 一键创建
+
+**存储位置：**
+- 默认：`skills/user/{skill-name}/`（蓝色信任徽章）
+- 可选：`skills/market/{skill-name}/`（黄色信任徽章）
+
 **research skill 核心内容：**
 - Phase 1: 广度探索（建立地图）
 - Phase 2: 深度挖掘（获取全文）
@@ -169,6 +200,8 @@ test_skill_tier.py                        # 安全分层测试
 ### 修改文件
 ```
 aiagent/skills.py                         # 支持三级扫描+分组显示
+aiagent/serve.py                          # 添加 /api/skills 和 /api/skills/create
+aiagent/web_ui.html                       # 技能面板 + 创建向导
 ```
 
 ### 目录变更
@@ -214,6 +247,26 @@ python -m aiagent.skill_security skills/market/skill-name
 触发: research skill 的 4 阶段研究法
 输出: 结构化研究报告（市场数据、对比表格、来源汇总）
 ```
+
+### 通过 Web UI 创建技能
+```
+1. 点击顶部工具栏的 "🛠️ 技能" 按钮打开面板
+2. 点击 "＋ 创建技能" 打开向导
+3. 按步骤填写信息：
+   - 步骤1：输入技能名称和描述
+   - 步骤2：选择模板并编写 SKILL.md 内容
+   - 步骤3：选择需要的资源目录（可选）
+   - 步骤4：预览并确认创建
+4. 技能自动保存到 skills/user/ 目录
+5. 创建成功后自动刷新技能列表
+```
+
+**模板类型：**
+- **空白模板** - 完全自定义
+- **工作流程型** - 适合多步骤任务（如数据处理流程）
+- **工具集合型** - 适合多种操作（如文件转换工具）
+- **参考指南型** - 适合标准和规范（如代码规范）
+- **能力模块型** - 适合多功能集成（如 API 调用）
 
 ---
 
@@ -269,18 +322,24 @@ feature/skill-security-tier-20260324
 ├── f7c942f - fix: skills.py 添加 skill 路径到 system prompt
 ├── 4ee1919 - feat: skills.py 按类别分组显示技能
 ├── 37c5e22 - feat: Phase 2 - 添加 research skill 和测试
-└── 696dfe6 - feat: Phase 2 - 添加 find-skills skill 和测试
+├── 696dfe6 - feat: Phase 2 - 添加 find-skills skill 和测试
+├── ce49470 - feat: add skill management panel to Web UI
+├── b7a5b64 - feat: enhance skill panel with empty state UX
+└── 6b15e39 - feat: add visual skill creation wizard
 ```
 
 ---
 
 ## 十、结论
 
-**Phase 5 Skill 安全分层实施完成！**
+**Phase 5 Skill 安全分层 + Web UI 技能管理实施完成！**
 
-- ✅ 所有计划任务完成
+- ✅ 三级安全架构（system/user/market）
+- ✅ 代码安全扫描（5种危险模式检测）
+- ✅ 核心技能补充（research + find-skills）
+- ✅ Web UI 技能面板（分类展示 + 信任徽章）
+- ✅ 可视化创建向导（4步表单，5种模板）
 - ✅ 20个测试全部通过
-- ✅ Web UI 实测验证通过
 - ✅ 文档完整
 
 **状态：可合并到主分支**
