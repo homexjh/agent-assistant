@@ -124,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_run_post(data)
         elif path.startswith("/api/sessions"):
             self._handle_session_post(path, data)
+        elif path == "/api/skills/create":
+            self._handle_skill_create(data)
         else:
             self.send_response(404)
             self.end_headers()
@@ -1124,12 +1126,78 @@ def _handle_skills_list(self):
         _json_response(self, {"error": str(e)}, 500)
 
 
+def _handle_skill_create(self, data):
+    """POST /api/skills/create - 创建新技能"""
+    try:
+        import re
+        
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        content = data.get("content", "").strip()
+        resources = data.get("resources", [])
+        category = data.get("category", "user")  # user 或 market
+        
+        # 验证名称
+        if not name:
+            _json_response(self, {"error": "技能名称不能为空"}, 400)
+            return
+        
+        # 规范化名称
+        normalized = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        normalized = re.sub(r"-{2,}", "-", normalized)
+        
+        if not normalized or len(normalized) > 64:
+            _json_response(self, {"error": "技能名称无效（1-64字符，仅支持字母、数字、连字符）"}, 400)
+            return
+        
+        # 确定目标目录
+        project_root = Path(__file__).parent.parent
+        target_dir = project_root / "skills" / category / normalized
+        
+        if target_dir.exists():
+            _json_response(self, {"error": f"技能 '{normalized}' 已存在"}, 400)
+            return
+        
+        # 创建目录
+        target_dir.mkdir(parents=True, exist_ok=False)
+        
+        # 构建 SKILL.md
+        skill_md = f"""---
+name: {normalized}
+description: {description}
+---
+
+{content}
+"""
+        
+        # 写入 SKILL.md
+        (target_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        
+        # 创建资源目录
+        created_resources = []
+        for resource in resources:
+            if resource in ("scripts", "references", "assets"):
+                (target_dir / resource).mkdir(exist_ok=True)
+                created_resources.append(resource)
+        
+        _json_response(self, {
+            "success": True,
+            "name": normalized,
+            "path": str(target_dir.relative_to(project_root)),
+            "resources": created_resources
+        })
+        
+    except Exception as e:
+        _json_response(self, {"error": str(e)}, 500)
+
+
 # 绑定方法到 Handler
 Handler._json_response = _json_response
 Handler._handle_sessions_list = _handle_sessions_list
 Handler._handle_session_get = _handle_session_get
 Handler._handle_session_post = _handle_session_post
 Handler._handle_skills_list = _handle_skills_list
+Handler._handle_skill_create = _handle_skill_create
 
 
 def main():

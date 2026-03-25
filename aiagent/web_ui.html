@@ -151,6 +151,249 @@
   }
   .skill-create-hint code {
     background: var(--bg3); padding: 2px 6px; border-radius: 4px;
+  }
+  
+  /* ===== 技能创建向导 ===== */
+  .skill-wizard-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 2000;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .skill-wizard {
+    width: 600px; max-width: 90vw; max-height: 85vh;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: wizardIn 0.3s ease;
+  }
+  @keyframes wizardIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .skill-wizard-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    font-size: 15px; font-weight: 600; color: var(--text);
+  }
+  .skill-wizard-close {
+    cursor: pointer; color: var(--text3); padding: 4px 8px;
+    border-radius: 4px; font-size: 14px;
+  }
+  .skill-wizard-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  
+  /* 步骤指示器 */
+  .skill-wizard-steps {
+    display: flex; padding: 20px; border-bottom: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .wizard-step {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    position: relative; opacity: 0.5; transition: all 0.3s;
+  }
+  .wizard-step.active { opacity: 1; }
+  .wizard-step.completed { opacity: 0.8; }
+  .wizard-step .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--bg3); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: var(--text2);
+    margin-bottom: 6px; transition: all 0.3s;
+  }
+  .wizard-step.active .step-num {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .wizard-step.completed .step-num {
+    background: var(--green); border-color: var(--green); color: white;
+  }
+  .wizard-step .step-label {
+    font-size: 11px; color: var(--text3);
+  }
+  .wizard-step.active .step-label {
+    color: var(--accent);
+  }
+  
+  /* 步骤内容 */
+  .skill-wizard-content {
+    flex: 1; overflow-y: auto; padding: 24px;
+  }
+  .wizard-panel {
+    display: none;
+  }
+  .wizard-panel.active {
+    display: block;
+    animation: panelIn 0.3s ease;
+  }
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  /* 表单样式 */
+  .wizard-form-group {
+    margin-bottom: 20px;
+  }
+  .wizard-form-group label {
+    display: block; font-size: 13px; font-weight: 500;
+    color: var(--text); margin-bottom: 8px;
+  }
+  .wizard-form-group .required {
+    color: #ef4444;
+  }
+  .wizard-input, .wizard-textarea, .wizard-select {
+    width: 100%; padding: 10px 12px;
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--rs); color: var(--text); font-size: 13px;
+    transition: all 0.2s;
+  }
+  .wizard-input:focus, .wizard-textarea:focus, .wizard-select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,142,255,0.1);
+  }
+  .wizard-textarea {
+    resize: vertical; font-family: inherit; line-height: 1.5;
+  }
+  .wizard-textarea.code {
+    font-family: 'SF Mono', Monaco, monospace; font-size: 12px;
+  }
+  .input-hint {
+    display: block; font-size: 11px; color: var(--text3);
+    margin-top: 6px;
+  }
+  
+  /* 资源选择卡片 */
+  .resource-options {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .resource-option {
+    cursor: pointer;
+  }
+  .resource-option input {
+    display: none;
+  }
+  .resource-card {
+    padding: 16px; text-align: center;
+    background: var(--bg1); border: 2px solid var(--border);
+    border-radius: var(--rs); transition: all 0.2s;
+  }
+  .resource-option:hover .resource-card {
+    border-color: rgba(108,142,255,0.4);
+  }
+  .resource-option input:checked + .resource-card {
+    border-color: var(--accent); background: rgba(108,142,255,0.05);
+  }
+  .resource-icon {
+    font-size: 24px; margin-bottom: 8px;
+  }
+  .resource-title {
+    font-size: 12px; font-weight: 600; color: var(--text);
+    margin-bottom: 4px;
+  }
+  .resource-desc {
+    font-size: 10px; color: var(--text3); line-height: 1.4;
+  }
+  
+  /* 存储位置选择 */
+  .storage-options {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .storage-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px; background: var(--bg1);
+    border: 1px solid var(--border); border-radius: var(--rs);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .storage-option:hover {
+    border-color: rgba(108,142,255,0.4);
+  }
+  .storage-option input:checked + span {
+    color: var(--accent);
+  }
+  .storage-option input {
+    accent-color: var(--accent);
+  }
+  
+  /* 预览区域 */
+  .wizard-preview {
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--rs); padding: 16px;
+  }
+  .wizard-preview h4 {
+    margin: 0 0 12px 0; font-size: 13px; color: var(--text);
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+  }
+  .preview-item {
+    display: flex; margin-bottom: 10px; font-size: 12px;
+  }
+  .preview-label {
+    width: 60px; color: var(--text3); flex-shrink: 0;
+  }
+  .preview-value {
+    color: var(--text); flex: 1;
+  }
+  
+  /* 进度和结果 */
+  .wizard-progress {
+    text-align: center; padding: 20px;
+  }
+  .progress-bar {
+    width: 100%; height: 4px; background: var(--bg3);
+    border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+  }
+  .progress-fill {
+    height: 100%; width: 30%; background: var(--accent);
+    border-radius: 2px; animation: progress 1s ease infinite;
+  }
+  @keyframes progress {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  .progress-text {
+    font-size: 12px; color: var(--text2);
+  }
+  .wizard-result {
+    text-align: center; padding: 30px;
+  }
+  .result-icon {
+    font-size: 48px; margin-bottom: 12px;
+  }
+  .result-message {
+    font-size: 16px; font-weight: 600; color: var(--green);
+    margin-bottom: 8px;
+  }
+  .result-path {
+    font-size: 12px; color: var(--text3);
+  }
+  
+  /* 底部按钮 */
+  .skill-wizard-footer {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 20px; border-top: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .wizard-btn {
+    padding: 8px 20px; border-radius: var(--rs); font-size: 13px;
+    cursor: pointer; transition: all 0.2s; border: none;
+  }
+  .wizard-btn.primary {
+    background: var(--accent); color: white;
+  }
+  .wizard-btn.primary:hover {
+    background: var(--accent-hover);
+  }
+  .wizard-btn.secondary {
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .wizard-btn.secondary:hover {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .wizard-btn.success {
+    background: var(--green); color: white;
+  }
+  .wizard-btn.success:hover {
+    background: #2dd4a0;
+  }
     font-family: monospace; color: var(--accent);
   }
   .todo-header {
@@ -382,8 +625,176 @@
       <div class="skills-loading">加载中...</div>
     </div>
     <div class="skills-actions">
-      <button class="skills-btn" onclick="createNewSkill()">＋ 创建技能</button>
+      <button class="skills-btn" onclick="openSkillWizard()">＋ 创建技能</button>
       <button class="skills-btn primary" onclick="browseSkillMarket()">🌐 浏览市场</button>
+    </div>
+  </div>
+  
+  <!-- 技能创建向导 -->
+  <div class="skill-wizard-overlay" id="skillWizardOverlay" style="display:none;" onclick="closeSkillWizard(event)">
+    <div class="skill-wizard" onclick="event.stopPropagation()">
+      <div class="skill-wizard-header">
+        <span>🧙‍♂️ 创建新技能</span>
+        <span class="skill-wizard-close" onclick="closeSkillWizard()">✕</span>
+      </div>
+      
+      <!-- 步骤指示器 -->
+      <div class="skill-wizard-steps">
+        <div class="wizard-step active" data-step="1">
+          <span class="step-num">1</span>
+          <span class="step-label">基本信息</span>
+        </div>
+        <div class="wizard-step" data-step="2">
+          <span class="step-num">2</span>
+          <span class="step-label">技能内容</span>
+        </div>
+        <div class="wizard-step" data-step="3">
+          <span class="step-num">3</span>
+          <span class="step-label">资源配置</span>
+        </div>
+        <div class="wizard-step" data-step="4">
+          <span class="step-num">4</span>
+          <span class="step-label">确认创建</span>
+        </div>
+      </div>
+      
+      <!-- 步骤内容 -->
+      <div class="skill-wizard-content">
+        <!-- 步骤1：基本信息 -->
+        <div class="wizard-panel active" data-panel="1">
+          <div class="wizard-form-group">
+            <label>技能名称 <span class="required">*</span></label>
+            <input type="text" id="swName" class="wizard-input" placeholder="my-awesome-skill" maxlength="64">
+            <span class="input-hint">仅支持小写字母、数字和连字符，将自动转换格式</span>
+          </div>
+          <div class="wizard-form-group">
+            <label>一句话描述 <span class="required">*</span></label>
+            <input type="text" id="swDesc" class="wizard-input" placeholder="描述这个技能的功能和适用场景...">
+            <span class="input-hint">这段描述决定了 AI 何时会触发使用此技能</span>
+          </div>
+          <div class="wizard-form-group">
+            <label>触发场景/关键词</label>
+            <textarea id="swTriggers" class="wizard-textarea" rows="3" placeholder="例如：
+- 当用户说：帮我整理笔记
+- 当需要处理 PDF 文件时
+- 当用户询问天气相关问题时"></textarea>
+          </div>
+        </div>
+        
+        <!-- 步骤2：技能内容 -->
+        <div class="wizard-panel" data-panel="2">
+          <div class="wizard-form-group">
+            <label>结构模板</label>
+            <select id="swTemplate" class="wizard-select" onchange="applySkillTemplate()">
+              <option value="blank">空白模板（从头开始）</option>
+              <option value="workflow">工作流程型（适合多步骤任务）</option>
+              <option value="tool">工具集合型（适合多种操作）</option>
+              <option value="reference">参考指南型（适合标准和规范）</option>
+              <option value="capability">能力模块型（适合多功能集成）</option>
+            </select>
+          </div>
+          <div class="wizard-form-group">
+            <label>SKILL.md 内容 <span class="required">*</span></label>
+            <textarea id="swContent" class="wizard-textarea code" rows="14" placeholder="# 技能标题
+
+## 概述
+简要说明这个技能能做什么。
+
+## 使用方法
+详细描述使用步骤和注意事项...
+"></textarea>
+            <span class="input-hint">使用 Markdown 格式编写，支持代码块、列表等</span>
+          </div>
+        </div>
+        
+        <!-- 步骤3：资源配置 -->
+        <div class="wizard-panel" data-panel="3">
+          <div class="wizard-form-group">
+            <label>选择需要的资源类型</label>
+            <div class="resource-options">
+              <label class="resource-option">
+                <input type="checkbox" id="resScripts" value="scripts">
+                <div class="resource-card">
+                  <div class="resource-icon">📜</div>
+                  <div class="resource-title">scripts/</div>
+                  <div class="resource-desc">存放可执行脚本（Python/Bash等）</div>
+                </div>
+              </label>
+              <label class="resource-option">
+                <input type="checkbox" id="resReferences" value="references">
+                <div class="resource-card">
+                  <div class="resource-icon">📚</div>
+                  <div class="resource-title">references/</div>
+                  <div class="resource-desc">存放参考文档和详细指南</div>
+                </div>
+              </label>
+              <label class="resource-option">
+                <input type="checkbox" id="resAssets" value="assets">
+                <div class="resource-card">
+                  <div class="resource-icon">🎨</div>
+                  <div class="resource-title">assets/</div>
+                  <div class="resource-desc">存放模板、图片等资源文件</div>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div class="wizard-form-group">
+            <label>存储位置</label>
+            <div class="storage-options">
+              <label class="storage-option">
+                <input type="radio" name="storage" value="user" checked>
+                <span>👤 User Skills（用户创建，基本信任）</span>
+              </label>
+              <label class="storage-option">
+                <input type="radio" name="storage" value="market">
+                <span>🌐 Market Skills（外部下载，需安全检查）</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 步骤4：确认创建 -->
+        <div class="wizard-panel" data-panel="4">
+          <div class="wizard-preview">
+            <h4>📋 技能信息预览</h4>
+            <div class="preview-item">
+              <span class="preview-label">名称：</span>
+              <span id="previewName" class="preview-value"></span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">描述：</span>
+              <span id="previewDesc" class="preview-value"></span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">路径：</span>
+              <code id="previewPath" class="preview-value"></code>
+            </div>
+            <div class="preview-item">
+              <span class="preview-label">资源：</span>
+              <span id="previewResources" class="preview-value"></span>
+            </div>
+          </div>
+          <div class="wizard-progress" id="wizardProgress" style="display:none;">
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+            <span class="progress-text">正在创建...</span>
+          </div>
+          <div class="wizard-result" id="wizardResult" style="display:none;">
+            <div class="result-icon">✅</div>
+            <div class="result-message">技能创建成功！</div>
+            <div class="result-path" id="resultPath"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 底部按钮 -->
+      <div class="skill-wizard-footer">
+        <button class="wizard-btn secondary" id="swPrevBtn" onclick="wizardPrev()" style="display:none;">上一步</button>
+        <button class="wizard-btn primary" id="swNextBtn" onclick="wizardNext()">下一步</button>
+        <button class="wizard-btn success" id="swCreateBtn" onclick="wizardCreate()" style="display:none;">创建技能</button>
+        <button class="wizard-btn primary" id="swFinishBtn" onclick="closeSkillWizard()" style="display:none;">完成</button>
+      </div>
     </div>
   </div>
 </header>
@@ -1963,19 +2374,307 @@ function renderSkills(skills) {
 }
 
 // 创建新技能
-function createNewSkill() {
-  const hint = `创建新技能的步骤：
+// ========== 技能创建向导 ==========
+let wizardCurrentStep = 1;
+const wizardTotalSteps = 4;
 
-1. 使用 skill-creator 初始化：
-   python skills/system/skill-creator/scripts/init_skill.py my-skill --path skills/user
+function openSkillWizard() {
+  document.getElementById('skillWizardOverlay').style.display = 'flex';
+  wizardCurrentStep = 1;
+  updateWizardUI();
+  resetWizardForm();
+}
 
-2. 编辑 SKILL.md 文件
+function closeSkillWizard(e) {
+  // 如果点击的是关闭按钮或遮罩层本身，或者强制关闭
+  if (!e || e.target === document.getElementById('skillWizardOverlay') || e.type === 'click') {
+    document.getElementById('skillWizardOverlay').style.display = 'none';
+    resetWizardForm();
+  }
+}
 
-3. 测试并打包
-
-详细指南请参考 find-skills skill 的文档。`;
+function resetWizardForm() {
+  document.getElementById('swName').value = '';
+  document.getElementById('swDesc').value = '';
+  document.getElementById('swTriggers').value = '';
+  document.getElementById('swContent').value = '';
+  document.getElementById('swTemplate').value = 'blank';
+  document.getElementById('resScripts').checked = false;
+  document.getElementById('resReferences').checked = false;
+  document.getElementById('resAssets').checked = false;
+  document.querySelector('input[name="storage"][value="user"]').checked = true;
   
-  alert(hint);
+  // 重置结果状态
+  document.getElementById('wizardProgress').style.display = 'none';
+  document.getElementById('wizardResult').style.display = 'none';
+  document.querySelector('.wizard-preview').style.display = 'block';
+}
+
+function updateWizardUI() {
+  // 更新步骤指示器
+  document.querySelectorAll('.wizard-step').forEach((step, index) => {
+    const stepNum = index + 1;
+    step.classList.remove('active', 'completed');
+    if (stepNum === wizardCurrentStep) {
+      step.classList.add('active');
+    } else if (stepNum < wizardCurrentStep) {
+      step.classList.add('completed');
+    }
+  });
+  
+  // 更新面板显示
+  document.querySelectorAll('.wizard-panel').forEach((panel, index) => {
+    panel.classList.toggle('active', index + 1 === wizardCurrentStep);
+  });
+  
+  // 更新按钮状态
+  document.getElementById('swPrevBtn').style.display = wizardCurrentStep > 1 ? 'block' : 'none';
+  document.getElementById('swNextBtn').style.display = wizardCurrentStep < 4 ? 'block' : 'none';
+  document.getElementById('swCreateBtn').style.display = wizardCurrentStep === 4 ? 'block' : 'none';
+  document.getElementById('swFinishBtn').style.display = 'none';
+  
+  // 第4步更新预览
+  if (wizardCurrentStep === 4) {
+    updateWizardPreview();
+  }
+}
+
+function wizardNext() {
+  // 验证当前步骤
+  if (wizardCurrentStep === 1) {
+    const name = document.getElementById('swName').value.trim();
+    const desc = document.getElementById('swDesc').value.trim();
+    if (!name) {
+      alert('请输入技能名称');
+      return;
+    }
+    if (!desc) {
+      alert('请输入技能描述');
+      return;
+    }
+  } else if (wizardCurrentStep === 2) {
+    const content = document.getElementById('swContent').value.trim();
+    if (!content) {
+      alert('请输入技能内容');
+      return;
+    }
+  }
+  
+  if (wizardCurrentStep < wizardTotalSteps) {
+    wizardCurrentStep++;
+    updateWizardUI();
+  }
+}
+
+function wizardPrev() {
+  if (wizardCurrentStep > 1) {
+    wizardCurrentStep--;
+    updateWizardUI();
+  }
+}
+
+function updateWizardPreview() {
+  const name = document.getElementById('swName').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const desc = document.getElementById('swDesc').value.trim();
+  const storage = document.querySelector('input[name="storage"]:checked').value;
+  
+  const resources = [];
+  if (document.getElementById('resScripts').checked) resources.push('scripts');
+  if (document.getElementById('resReferences').checked) resources.push('references');
+  if (document.getElementById('resAssets').checked) resources.push('assets');
+  
+  document.getElementById('previewName').textContent = name || '-';
+  document.getElementById('previewDesc').textContent = desc || '-';
+  document.getElementById('previewPath').textContent = `skills/${storage}/${name}/`;
+  document.getElementById('previewResources').textContent = resources.length > 0 ? resources.join(', ') : '无';
+}
+
+function applySkillTemplate() {
+  const template = document.getElementById('swTemplate').value;
+  const name = document.getElementById('swName').value.trim() || 'my-skill';
+  const title = name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  
+  const templates = {
+    blank: '',
+    workflow: `# ${title}
+
+## 概述
+简要说明这个技能的工作流程和目标。
+
+## 决策流程
+根据用户请求判断执行路径：
+
+1. **场景A**：当用户需要...时
+   - 执行步骤1
+   - 执行步骤2
+
+2. **场景B**：当用户需要...时
+   - 执行步骤1
+   - 执行步骤2
+
+## 详细步骤
+
+### 步骤1：准备阶段
+[具体操作说明]
+
+### 步骤2：执行阶段
+[具体操作说明]
+
+### 步骤3：验证阶段
+[具体操作说明]
+
+## 注意事项
+- 重要提示1
+- 重要提示2`,
+    
+    tool: `# ${title}
+
+## 概述
+这个技能提供以下工具/功能：
+
+## 快速开始
+基本使用示例...
+
+## 功能列表
+
+### 功能1：XXX
+**用途**：说明用途
+**示例**：\`命令示例\`
+**输出**：期望的输出结果
+
+### 功能2：YYY
+**用途**：说明用途
+**示例**：\`命令示例\`
+**输出**：期望的输出结果
+
+## 参数说明
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| param1 | string | 参数说明 |
+| param2 | number | 参数说明 |`,
+    
+    reference: `# ${title}
+
+## 概述
+本指南定义了...的标准和规范。
+
+## 核心规范
+
+### 规范1
+详细说明...
+
+### 规范2
+详细说明...
+
+## 最佳实践
+- 实践建议1
+- 实践建议2
+
+## 常见问题
+
+### Q: 问题1？
+A: 答案...
+
+### Q: 问题2？
+A: 答案...`,
+    
+    capability: `# ${title}
+
+## 概述
+这个技能提供以下核心能力：
+
+## 能力清单
+
+### 1. 能力A
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+3. 步骤3
+
+### 2. 能力B
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+
+### 3. 能力C
+**触发条件**：当用户...时
+**执行逻辑**：
+1. 步骤1
+2. 步骤2
+
+## 使用示例
+\`\`\`
+用户：示例请求
+AI：示例响应
+\`\`\``
+  };
+  
+  document.getElementById('swContent').value = templates[template] || '';
+}
+
+async function wizardCreate() {
+  const name = document.getElementById('swName').value.trim();
+  const desc = document.getElementById('swDesc').value.trim();
+  const triggers = document.getElementById('swTriggers').value.trim();
+  const content = document.getElementById('swContent').value.trim();
+  const storage = document.querySelector('input[name="storage"]:checked').value;
+  
+  const resources = [];
+  if (document.getElementById('resScripts').checked) resources.push('scripts');
+  if (document.getElementById('resReferences').checked) resources.push('references');
+  if (document.getElementById('resAssets').checked) resources.push('assets');
+  
+  // 组合完整内容
+  let fullContent = content;
+  if (triggers) {
+    fullContent += '\n\n## 触发场景\n' + triggers.split('\n').map(t => t.trim() && '- ' + t.trim()).filter(Boolean).join('\n');
+  }
+  
+  // 显示进度
+  document.querySelector('.wizard-preview').style.display = 'none';
+  document.getElementById('wizardProgress').style.display = 'block';
+  document.getElementById('swCreateBtn').disabled = true;
+  
+  try {
+    const res = await fetch('/api/skills/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: desc,
+        content: fullContent,
+        resources,
+        category: storage
+      })
+    });
+    
+    const data = await res.json();
+    
+    document.getElementById('wizardProgress').style.display = 'none';
+    
+    if (data.success) {
+      document.getElementById('wizardResult').style.display = 'block';
+      document.getElementById('resultPath').textContent = data.path;
+      
+      // 显示完成按钮，隐藏创建按钮
+      document.getElementById('swCreateBtn').style.display = 'none';
+      document.getElementById('swFinishBtn').style.display = 'block';
+      
+      // 刷新技能列表
+      loadSkills();
+    } else {
+      alert('创建失败：' + (data.error || '未知错误'));
+      document.querySelector('.wizard-preview').style.display = 'block';
+      document.getElementById('swCreateBtn').disabled = false;
+    }
+  } catch (e) {
+    alert('请求失败：' + e.message);
+    document.getElementById('wizardProgress').style.display = 'none';
+    document.querySelector('.wizard-preview').style.display = 'block';
+    document.getElementById('swCreateBtn').disabled = false;
+  }
 }
 
 // 浏览技能市场
