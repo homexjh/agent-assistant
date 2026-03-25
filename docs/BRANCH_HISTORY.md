@@ -8,7 +8,7 @@
 ## 📊 分支关系总览
 
 ```
-master (b6ca2a9) ← **当前最新** (已合并浏览器修复 + 文档清理)
+master (4c417fb) ← **当前最新** (已添加错误标准化方案)
   │
   ├── fix/browser-snapshot-tab-20260325 (f54da48) ← **已合并**到 master
   │     ├── fix: snapshot 崩溃 + 标签页切换
@@ -312,6 +312,7 @@ git branch -d feature/server-session-20260318
 
 | 日期 | 更新内容 | 更新人 |
 |------|----------|--------|
+| 2026-03-26 | 文档: 添加错误标准化与资源管理对接方案 | Kimi |
 | 2026-03-25 | 清理: 删除根目录过时规划文档 (6个文件) | Kimi |
 | 2026-03-25 | 合并: fix/browser-snapshot-tab-20260325 → master | Kimi |
 | 2026-03-25 | 添加: fix/browser-snapshot-tab-20260325 修复分支记录 | Kimi |
