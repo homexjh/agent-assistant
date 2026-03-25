@@ -8,10 +8,13 @@
 ## 📊 分支关系总览
 
 ```
-master (efb4c08) ← **当前最新**
+master (2cc7f08) ← **当前最新** (已合并浏览器修复分支)
   │
-  ├── fix/browser-snapshot-tab-20260325 (713a943) ← 浏览器工具修复（开发中）
-  │     └── fix: snapshot 崩溃 + 标签页切换
+  ├── fix/browser-snapshot-tab-20260325 (f54da48) ← **已合并**到 master
+  │     ├── fix: snapshot 崩溃 + 标签页切换
+  │     ├── fix: 移除重复 global 声明
+  │     ├── fix: 点击后自动切换新标签页
+  │     └── fix: 局部变量同步问题
   │
   ├── feature/todo-list-20260318 (84778f0) ← 已合并到 master
   │     │  (包含: Skill 安全分层 + Web UI 技能向导 + README 重写)
@@ -270,20 +273,22 @@ System Skills:
 
 ## 🔄 进行中分支
 
-### fix/browser-snapshot-tab-20260325
+### fix/browser-snapshot-tab-20260325 ✅ 已合并
 - **目的**: 修复浏览器工具的两个问题
 - **基于**: `master` (efb4c08)
 - **修复内容**:
   1. ✅ 修复 snapshot 递归函数崩溃（nodeType 检查）
   2. ✅ 添加 switch_tab action 支持标签页切换
-  3. ✅ click 后自动检测新标签页并提示
-- **状态**: 修复完成，待合并到 master
+  3. ✅ click 后自动切换到新标签页
+  4. ✅ 修复局部变量未同步问题
+- **状态**: **已合并到 master** (2cc7f08, 2026-03-25)
 
 ---
 
 ## 🗑️ 可清理分支
 
 以下分支已合并到 master，可删除:
+- `fix/browser-snapshot-tab-20260325` ✅ **已合并到 master (2cc7f08)**
 - `feature/todo-list-20260318` ✅ **已合并到 master (c4c14c4)**
 - `feature/memory-struct-20260320` ✅ 已合并
 - `feature/skill-security-tier-20260324` ✅ 已合并
@@ -293,6 +298,7 @@ System Skills:
 
 ```bash
 # 删除已合并分支
+git branch -d fix/browser-snapshot-tab-20260325
 git branch -d feature/todo-list-20260318
 git branch -d feature/memory-struct-20260320
 git branch -d feature/skill-security-tier-20260324
@@ -307,6 +313,7 @@ git branch -d feature/server-session-20260318
 
 | 日期 | 更新内容 | 更新人 |
 |------|----------|--------|
+| 2026-03-25 | 合并: fix/browser-snapshot-tab-20260325 → master | Kimi |
 | 2026-03-25 | 添加: fix/browser-snapshot-tab-20260325 修复分支记录 | Kimi |
 | 2026-03-25 | 更新: master 已合并 feature/todo-list-20260318，添加 README 更新记录 | Kimi |
 | 2026-03-22 | 创建文档，记录所有分支历史 | Kimi |
