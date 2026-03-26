@@ -1,10 +1,10 @@
 # NAS FMS 系统集成实施方案
 
-> **项目**: AI PC Agent OS 对接 NAS FMS 多模态检索系统  
-> **FMS 地址**: `http://172.16.50.51:8001`  
-> **实施状态**: ✅ **已完成，已合并到 master**  
-> **测试验证**: ✅ **26次工具调用无错误**  
-> **后续规划**: [FMS_INTEGRATION_SUMMARY.md](./FMS_INTEGRATION_SUMMARY.md)  
+> **项目**: AI PC Agent OS 对接 NAS FMS 多模态检索系统
+> **FMS 地址**: `http://172.16.50.51:8001`
+> **实施状态**: ✅ **已完成，已合并到 master**
+> **测试验证**: ✅ **26次工具调用无错误**
+> **后续规划**: [FMS_INTEGRATION_SUMMARY.md](./FMS_INTEGRATION_SUMMARY.md)
 > **文档日期**: 2026-03-26
 
 ---
@@ -14,6 +14,7 @@
 ### 1.1 背景
 
 NAS 部署了 **FMS (File Management System)** 智能文件管理系统，提供：
+
 - 多模态文件检索（文本搜文档/图片/视频、以图搜图）
 - 基于知识库的智能问答
 - 文件自动分类和索引
@@ -22,21 +23,21 @@ NAS 部署了 **FMS (File Management System)** 智能文件管理系统，提供
 
 ### 1.2 目标
 
-| 阶段 | 目标 | 状态 |
-|------|------|------|
+| 阶段              | 目标                                                   | 状态   |
+| ----------------- | ------------------------------------------------------ | ------ |
 | **Phase 1** | 核心工具封装（fms_retrieve, fms_chat, fms_list_files） | 待实施 |
-| **Phase 2** | FMS Skill 创建（触发词、使用指南） | 待实施 |
-| **Phase 3** | 测试验证（工具测试 + Web UI 集成测试） | 待实施 |
-| **Phase 4** | 扩展功能（fms_delete, fms_task_control，可选） | 预留 |
+| **Phase 2** | FMS Skill 创建（触发词、使用指南）                     | 待实施 |
+| **Phase 3** | 测试验证（工具测试 + Web UI 集成测试）                 | 待实施 |
+| **Phase 4** | 扩展功能（fms_delete, fms_task_control，可选）         | 预留   |
 
 ### 1.3 对接价值
 
-| 能力 | 用户场景 | 示例 |
-|------|----------|------|
-| 文档检索 | 快速查找公司文档 | "搜索关于班车的文档" |
-| 知识问答 | 基于内部知识库问答 | "公司班车有哪些路线" |
-| 图片搜索 | 找特定类型的图片 | "找风景优美的图片" |
-| 多模态关联 | 跨类型检索 | 用文本搜相关图片/视频 |
+| 能力       | 用户场景           | 示例                  |
+| ---------- | ------------------ | --------------------- |
+| 文档检索   | 快速查找公司文档   | "搜索关于班车的文档"  |
+| 知识问答   | 基于内部知识库问答 | "公司班车有哪些路线"  |
+| 图片搜索   | 找特定类型的图片   | "找风景优美的图片"    |
+| 多模态关联 | 跨类型检索         | 用文本搜相关图片/视频 |
 
 ---
 
@@ -44,25 +45,25 @@ NAS 部署了 **FMS (File Management System)** 智能文件管理系统，提供
 
 ### 2.1 核心接口清单
 
-| 接口 | 方法 | 功能 | 优先级 |
-|------|------|------|--------|
-| `/api/fms/retrieve` | POST | 多模态检索 | **P0** |
-| `/api/fms/chat` | POST | 知识库问答 | **P0** |
-| `/api/fms/get_knowledge_files` | GET | 获取文件列表 | **P0** |
-| `/api/fms/delete_file` | POST | 删除文件 | P1 |
-| `/api/fms/ingest_file` | POST | 文件入库 | 预留 |
-| `/api/fms/ingest_progress` | GET | 入库进度 | 预留 |
-| `/api/fms/{pause/resume/cancel}_task` | POST | 任务管理 | 预留 |
+| 接口                                    | 方法 | 功能         | 优先级       |
+| --------------------------------------- | ---- | ------------ | ------------ |
+| `/api/fms/retrieve`                   | POST | 多模态检索   | **P0** |
+| `/api/fms/chat`                       | POST | 知识库问答   | **P0** |
+| `/api/fms/get_knowledge_files`        | GET  | 获取文件列表 | **P0** |
+| `/api/fms/delete_file`                | POST | 删除文件     | P1           |
+| `/api/fms/ingest_file`                | POST | 文件入库     | 预留         |
+| `/api/fms/ingest_progress`            | GET  | 入库进度     | 预留         |
+| `/api/fms/{pause/resume/cancel}_task` | POST | 任务管理     | 预留         |
 
 ### 2.2 检索类型详解
 
-| 类型 | 输入 | 输出 | 应用场景 |
-|------|------|------|----------|
-| `text2doc` | 文本 | 文档列表 | 关键词搜文档 |
-| `doc2doc` | 文档路径 | 相似文档 | 找相似文档 |
-| `text2image` | 文本 | 图片列表 | 关键词搜图片 |
-| `image2image` | 图片路径 | 相似图片 | 以图搜图 |
-| `text2video` | 文本 | 视频列表 | 关键词搜视频 |
+| 类型            | 输入     | 输出     | 应用场景     |
+| --------------- | -------- | -------- | ------------ |
+| `text2doc`    | 文本     | 文档列表 | 关键词搜文档 |
+| `doc2doc`     | 文档路径 | 相似文档 | 找相似文档   |
+| `text2image`  | 文本     | 图片列表 | 关键词搜图片 |
+| `image2image` | 图片路径 | 相似图片 | 以图搜图     |
+| `text2video`  | 文本     | 视频列表 | 关键词搜视频 |
 
 ---
 
@@ -156,21 +157,21 @@ async def _fms_request(
 ) -> dict:
     """
     发送 HTTP 请求到 FMS 服务器
-    
+  
     Args:
         endpoint: API 端点路径（如 /api/fms/chat）
         method: HTTP 方法
         json_data: POST 请求的 JSON 数据
         params: GET 请求的查询参数
-    
+  
     Returns:
         FMS 响应的 JSON 数据
-    
+  
     Raises:
         返回错误信息字典，不抛出异常
     """
     url = f"{FMS_BASE_URL}{endpoint}"
-    
+  
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT)) as session:
             if method.upper() == "GET":
@@ -194,14 +195,14 @@ async def _handle_response(resp: aiohttp.ClientResponse) -> dict:
     except Exception:
         text = await resp.text()
         return {"code": -1, "message": f"无效的 JSON 响应: {text[:200]}", "data": None}
-    
+  
     if resp.status != 200:
         return {
             "code": resp.status,
             "message": data.get("message", f"HTTP {resp.status}"),
             "data": None
         }
-    
+  
     return data
 
 
@@ -209,20 +210,20 @@ def _format_retrieve_results(results: List[Dict]) -> str:
     """格式化检索结果为表格"""
     if not results:
         return "未找到相关文件"
-    
+  
     lines = [
         f"找到 {len(results)} 个相关文件：\n",
         "| 相似度 | 文件路径 | 类型 | 内容片段 |",
         "|--------|----------|------|----------|",
     ]
-    
+  
     for r in results:
         score = r.get("score", 0)
         path = r.get("file_path", "N/A")
         file_class = r.get("file_class", "default")
         chunk = r.get("doc_chunk", "")[:60].replace("\n", " ").replace("|", "\\|")
         lines.append(f"| {score:.2f} | `{path}` | {file_class} | {chunk}... |")
-    
+  
     return "\n".join(lines)
 
 
@@ -230,16 +231,16 @@ def _format_chat_response(data: dict) -> str:
     """格式化问答响应"""
     answer = data.get("answer", "无回答")
     chunks = data.get("chunk", [])
-    
+  
     result = f"**回答**：\n{answer}\n"
-    
+  
     if chunks:
         result += "\n**参考来源**：\n"
         for i, c in enumerate(chunks[:3], 1):
             path = c.get("path", "N/A")
             content = c.get("content", "")[:80].replace("\n", " ")
             result += f"{i}. `{path}`\n   > {content}...\n"
-    
+  
     return result
 
 
@@ -247,27 +248,27 @@ def _format_file_list(files: List[Dict]) -> str:
     """格式化文件列表"""
     if not files:
         return "知识库中没有文件"
-    
+  
     # 按类型分组
     docs = [f for f in files if f.get("type") == "document"]
     images = [f for f in files if f.get("type") == "image"]
     videos = [f for f in files if f.get("type") == "video"]
-    
+  
     result = f"知识库共有 {len(files)} 个文件：\n"
     result += f"- 📄 文档: {len(docs)} 个\n"
     result += f"- 🖼️ 图片: {len(images)} 个\n"
     result += f"- 🎬 视频: {len(videos)} 个\n\n"
-    
+  
     # 显示前10个文件
     result += "**最近文件**（显示前10个）：\n"
     for f in files[:10]:
         emoji = "📄" if f.get("type") == "document" else "🖼️" if f.get("type") == "image" else "🎬"
         path = f.get("file_path", "N/A")
         result += f"{emoji} `{path}`\n"
-    
+  
     if len(files) > 10:
         result += f"\n... 还有 {len(files) - 10} 个文件"
-    
+  
     return result
 
 
@@ -281,9 +282,9 @@ async def fms_retrieve_handler(
 ) -> str:
     """
     FMS 多模态检索
-    
+  
     支持文本搜文档、文本搜图片、以图搜图、文本搜视频等多种检索方式。
-    
+  
     Args:
         query: 查询内容（文本或文件路径）
         type: 检索类型，可选值：
@@ -294,7 +295,7 @@ async def fms_retrieve_handler(
             - text2video: 文本搜视频
         top_k: 返回结果数量（默认10）
         score_threshold: 相似度阈值 0-1（默认0.5）
-    
+  
     Returns:
         格式化的检索结果表格
     """
@@ -302,7 +303,7 @@ async def fms_retrieve_handler(
     valid_types = ["text2doc", "doc2doc", "text2image", "image2image", "text2video"]
     if type not in valid_types:
         return f"Error: 不支持的检索类型 '{type}'。可选值: {', '.join(valid_types)}"
-    
+  
     data = await _fms_request(
         "/api/fms/retrieve",
         method="POST",
@@ -313,10 +314,10 @@ async def fms_retrieve_handler(
             "score_threshold": score_threshold,
         }
     )
-    
+  
     if data["code"] != 200:
         return f"Error [{data.get('code', 'Unknown')}]: {data.get('message', '检索失败')}"
-    
+  
     results = data.get("data", {}).get("results", [])
     return _format_retrieve_results(results)
 
@@ -324,37 +325,37 @@ async def fms_retrieve_handler(
 async def fms_chat_handler(query: str) -> str:
     """
     FMS 知识库智能问答
-    
+  
     基于 NAS 知识库内容进行智能问答。
-    
+  
     Args:
         query: 用户问题
-    
+  
     Returns:
         AI 生成的回答及相关文档来源
     """
     if not query or not query.strip():
         return "Error: 查询内容不能为空"
-    
+  
     data = await _fms_request(
         "/api/fms/chat",
         method="POST",
         json_data={"query": query}
     )
-    
+  
     if data["code"] != 200:
         return f"Error [{data.get('code', 'Unknown')}]: {data.get('message', '问答失败')}"
-    
+  
     return _format_chat_response(data.get("data", {}))
 
 
 async def fms_list_files_handler(file_type: Optional[str] = None) -> str:
     """
     获取 FMS 知识库文件列表
-    
+  
     Args:
         file_type: 文件类型过滤，可选值：document, image, video。不填返回所有
-    
+  
     Returns:
         文件列表统计和详情
     """
@@ -364,16 +365,16 @@ async def fms_list_files_handler(file_type: Optional[str] = None) -> str:
         if file_type not in valid_types:
             return f"Error: 不支持的文件类型 '{file_type}'。可选值: {', '.join(valid_types)}"
         params["file_type"] = file_type
-    
+  
     data = await _fms_request(
         "/api/fms/get_knowledge_files",
         method="GET",
         params=params if params else None
     )
-    
+  
     if data["code"] != 200:
         return f"Error [{data.get('code', 'Unknown')}]: {data.get('message', '获取文件列表失败')}"
-    
+  
     files = data.get("data", [])
     return _format_file_list(files)
 
@@ -575,14 +576,17 @@ triggers:
 ```
 
 ### 示例 2：知识库问答
+
 用户："介绍一下公司的班车路线"
 
 思考过程：
+
 1. 用户询问公司内部信息
 2. 这是知识库问答场景
 3. 使用 `fms_chat` 工具
 
 工具调用：
+
 ```json
 {
   "tool": "fms_chat",
@@ -593,9 +597,11 @@ triggers:
 ```
 
 ### 示例 3：图片搜索
+
 用户："找关于风景的图片"
 
 工具调用：
+
 ```json
 {
   "tool": "fms_retrieve",
@@ -608,9 +614,11 @@ triggers:
 ```
 
 ### 示例 4：查看文件列表
+
 用户："知识库里有哪些文档？"
 
 工具调用：
+
 ```json
 {
   "tool": "fms_list_files",
@@ -633,6 +641,7 @@ triggers:
 - `fms_retrieve` - 多模态检索（核心工具）
 - `fms_chat` - 知识库问答
 - `fms_list_files` - 获取文件列表
+
 ```
 
 ---
@@ -656,7 +665,7 @@ from aiagent.tools.fms import (
 
 class TestFMSRetrieve:
     """测试检索功能"""
-    
+  
     @pytest.mark.asyncio
     async def test_text2doc_search(self):
         """测试文本搜文档"""
@@ -667,7 +676,7 @@ class TestFMSRetrieve:
         )
         # 验证返回格式
         assert "相似度" in result or "Error" in result or "未找到" in result
-    
+  
     @pytest.mark.asyncio
     async def test_invalid_type(self):
         """测试无效检索类型"""
@@ -681,13 +690,13 @@ class TestFMSRetrieve:
 
 class TestFMSChat:
     """测试问答功能"""
-    
+  
     @pytest.mark.asyncio
     async def test_chat_basic(self):
         """测试基本问答"""
         result = await fms_chat_handler("公司班车")
         assert "Error" not in result or "无法连接" not in result
-    
+  
     @pytest.mark.asyncio
     async def test_chat_empty_query(self):
         """测试空查询"""
@@ -698,7 +707,7 @@ class TestFMSChat:
 
 class TestFMSListFiles:
     """测试文件列表"""
-    
+  
     @pytest.mark.asyncio
     async def test_list_all_files(self):
         """测试列出所有文件"""
@@ -721,7 +730,7 @@ async def test():
     print('=== 测试问答 ===')
     r = await fms_chat_handler('班车路线')
     print(r[:200])
-    
+  
     print('\\n=== 测试检索 ===')
     r = await fms_retrieve_handler('班车', 'text2doc', top_k=3)
     print(r[:200])
@@ -736,12 +745,12 @@ asyncio.run(test())
 
 ### 5.1 错误处理策略
 
-| 错误场景 | 处理方式 | 返回信息 |
-|----------|----------|----------|
-| 连接失败 | 捕获异常 | "无法连接到 FMS 服务器" |
-| 请求超时 | 设置超时30s | "FMS 请求超时" |
-| 服务端错误 | 检查 status code | 返回 FMS 错误信息 |
-| 参数错误 | 前置验证 | 提示有效参数范围 |
+| 错误场景   | 处理方式         | 返回信息                |
+| ---------- | ---------------- | ----------------------- |
+| 连接失败   | 捕获异常         | "无法连接到 FMS 服务器" |
+| 请求超时   | 设置超时30s      | "FMS 请求超时"          |
+| 服务端错误 | 检查 status code | 返回 FMS 错误信息       |
+| 参数错误   | 前置验证         | 提示有效参数范围        |
 
 ### 5.2 结果格式化
 
@@ -759,23 +768,23 @@ asyncio.run(test())
 
 ## 六、实施计划
 
-| 日期 | 任务 | 产出 |
-|------|------|------|
-| Day 1 | Phase 1.1 | `aiagent/tools/fms.py` |
-| Day 2 | Phase 1.2 | 工具注册完成 |
-| Day 3 | Phase 2 | `skills/system/fms/SKILL.md` |
-| Day 4 | Phase 3 | `tests/test_fms.py` + 测试通过 |
-| Day 5 | 文档整理 | 更新本文档 + BRANCH_HISTORY |
+| 日期  | 任务      | 产出                             |
+| ----- | --------- | -------------------------------- |
+| Day 1 | Phase 1.1 | `aiagent/tools/fms.py`         |
+| Day 2 | Phase 1.2 | 工具注册完成                     |
+| Day 3 | Phase 2   | `skills/system/fms/SKILL.md`   |
+| Day 4 | Phase 3   | `tests/test_fms.py` + 测试通过 |
+| Day 5 | 文档整理  | 更新本文档 + BRANCH_HISTORY      |
 
 ---
 
 ## 七、风险与应对
 
-| 风险 | 可能性 | 应对 |
-|------|--------|------|
-| FMS 服务不可用 | 低 | 友好的错误提示，引导用户检查服务 |
-| 网络延迟高 | 中 | 30秒超时 + 超时重试提示 |
-| 结果过多 | 中 | top_k 限制 + 结果截断 |
+| 风险           | 可能性 | 应对                             |
+| -------------- | ------ | -------------------------------- |
+| FMS 服务不可用 | 低     | 友好的错误提示，引导用户检查服务 |
+| 网络延迟高     | 中     | 30秒超时 + 超时重试提示          |
+| 结果过多       | 中     | top_k 限制 + 结果截断            |
 
 ---
 
@@ -786,6 +795,6 @@ asyncio.run(test())
 
 ---
 
-**创建日期**: 2026-03-26  
-**作者**: AI Agent Team  
-**状态**: 待实施
+**创建日期**: 2026-03-26
+**作者**: emdoor 谢建辉
+**状态**: 已完成
