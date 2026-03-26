@@ -2,6 +2,9 @@
 
 > **项目**: AI PC Agent OS 对接 NAS FMS 多模态检索系统  
 > **FMS 地址**: `http://172.16.50.51:8001`  
+> **实施状态**: ✅ **已完成，已合并到 master**  
+> **测试验证**: ✅ **26次工具调用无错误**  
+> **后续规划**: [FMS_INTEGRATION_SUMMARY.md](./FMS_INTEGRATION_SUMMARY.md)  
 > **文档日期**: 2026-03-26
 
 ---
