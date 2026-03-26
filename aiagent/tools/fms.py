@@ -146,7 +146,7 @@ async def fms_retrieve_handler(
     query: str,
     type: str = "text2doc",
     top_k: int = 10,
-    score_threshold: float = 0.5,
+    score_threshold: float = 0.3,  # 降低阈值，图片检索通常分数较低
 ) -> str:
     """
     FMS 多模态检索
