@@ -8,6 +8,7 @@
 """
 
 import pytest
+import pytest_asyncio
 from aiagent.tools.fms import (
     fms_retrieve_handler,
     fms_chat_handler,
