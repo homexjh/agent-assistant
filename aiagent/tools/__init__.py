@@ -46,6 +46,11 @@ from .daily_log import (
     daily_log_get_tool,
     daily_log_list_tool,
 )
+from .fms import (
+    fms_retrieve_tool,
+    fms_chat_tool,
+    fms_list_files_tool,
+)
 
 # ── 注册表 ────────────────────────────────────────────────
 _registry: dict[str, RegisteredTool] = {}
@@ -77,6 +82,11 @@ _register(pdf_tool)
 _register(tts_tool)
 _register(browser_tool)
 _register(cron_tool)
+
+# 注册 FMS 工具
+_register(fms_retrieve_tool)
+_register(fms_chat_tool)
+_register(fms_list_files_tool)
 
 # 注册增强 Git 工具
 for name, definition, handler in git_enhanced_tools:
