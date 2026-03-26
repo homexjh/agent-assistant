@@ -1,7 +1,7 @@
 # 错误标准化与资源管理系统对接方案
 
-> **实施状态**: ✅ 已完成（2026-03-26）  
-> **分支**: `feature/error-standardization-20260326`  
+> **实施状态**: ✅ 已完成（2026-03-26）
+> **分支**: `feature/error-standardization-20260326`
 > **测试**: 26个单元测试全部通过，Web UI 集成测试通过
 
 ---
@@ -20,6 +20,7 @@
 ### 为什么现在就要做
 
 虽然资源管理系统尚未对接，但：
+
 - **架构预留成本更低**：现在定义接口，将来只需实现，避免大规模重构
 - **错误模式积累**：现在就开始标准化收集，积累错误处理经验
 - **LLM 兼容性**：可以渐进式改造，保持现有接口不变
@@ -31,15 +32,16 @@
 ### ✅ 已完成（2026-03-26）
 
 1. **Phase 1 - 基础设施**:
+
    - ✅ `aiagent/errors.py` - AgentError 数据类 + ErrorType/Severity 枚举
    - ✅ `aiagent/error_parser.py` - 错误解析器（支持 exec/browser/web/file/pdf/image）
    - ✅ `aiagent/resource_bridge.py` - 资源管理对接接口 + 事件广播
-
 2. **Phase 2 - 集成改造**:
+
    - ✅ `aiagent/tools/__init__.py` - execute_tool() 集成错误解析
    - ✅ `aiagent/agent.py` - _execute_tool() 子 Agent 工具错误处理
-
 3. **Phase 3 - 测试验证**:
+
    - ✅ `tests/test_error_handling.py` - 26个单元测试
    - ✅ Web UI 集成测试 - 验证 LLM 友好显示 + 结构化数据
    - ✅ `docs/ERROR_HANDLING.md` - 使用指南
@@ -47,12 +49,13 @@
 ### 🔄 待完成（资源管理对接时）
 
 1. **短期（现在）**：
+
    - 定义标准化错误结构
    - 实现错误解析器（从字符串提取结构化信息）
    - 建立错误事件广播机制
    - 预留资源管理对接接口
-
 2. **长期（对接时）**：
+
    - 资源管理系统实现 `ResourceManagerBridge` 接口
    - 实现自动重试、熔断、扩容等策略
    - 建立统一的错误监控和告警
@@ -82,12 +85,12 @@
 
 ### 核心组件
 
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| `AgentError` | `aiagent/errors.py` | 标准化错误数据结构 |
-| `ErrorParser` | `aiagent/error_parser.py` | 解析工具错误字符串 |
-| `EventEmitter` | `aiagent/tools/__init__.py` | 广播错误事件 |
-| `ResourceManagerBridge` | `aiagent/resource_bridge.py` | 资源管理对接接口 |
+| 组件                      | 文件                           | 职责               |
+| ------------------------- | ------------------------------ | ------------------ |
+| `AgentError`            | `aiagent/errors.py`          | 标准化错误数据结构 |
+| `ErrorParser`           | `aiagent/error_parser.py`    | 解析工具错误字符串 |
+| `EventEmitter`          | `aiagent/tools/__init__.py`  | 广播错误事件       |
+| `ResourceManagerBridge` | `aiagent/resource_bridge.py` | 资源管理对接接口   |
 
 ---
 
@@ -95,24 +98,24 @@
 
 ### 错误类型（ErrorType）
 
-| 类型 | 说明 | 示例 | 建议处理 |
-|------|------|------|----------|
-| `TEMPORARY` | 临时错误，可重试 | 网络超时、Rate Limit | 指数退避重试 |
-| `PERMANENT` | 永久错误，无需重试 | 命令不存在、语法错误 | 立即终止 |
-| `RESOURCE` | 资源不足 | 内存不足、磁盘满 | 扩容或清理 |
-| `PERMISSION` | 权限问题 | 文件不可读 | 通知管理员 |
-| `DEPENDENCY` | 依赖缺失 | Playwright 未安装 | 自动安装/提示 |
-| `UNKNOWN` | 未知错误 | 未识别的错误格式 | 记录并告警 |
+| 类型           | 说明               | 示例                 | 建议处理      |
+| -------------- | ------------------ | -------------------- | ------------- |
+| `TEMPORARY`  | 临时错误，可重试   | 网络超时、Rate Limit | 指数退避重试  |
+| `PERMANENT`  | 永久错误，无需重试 | 命令不存在、语法错误 | 立即终止      |
+| `RESOURCE`   | 资源不足           | 内存不足、磁盘满     | 扩容或清理    |
+| `PERMISSION` | 权限问题           | 文件不可读           | 通知管理员    |
+| `DEPENDENCY` | 依赖缺失           | Playwright 未安装    | 自动安装/提示 |
+| `UNKNOWN`    | 未知错误           | 未识别的错误格式     | 记录并告警    |
 
 ### 严重程度（Severity）
 
-| 级别 | 场景 | 通知方式 |
-|------|------|----------|
-| `DEBUG` | 调试信息 | 仅日志 |
-| `INFO` | 正常流程信息 | 日志 |
-| `WARNING` | 可恢复的警告 | 日志 + 可选通知 |
-| `ERROR` | 功能失败 | 日志 + 通知 |
-| `CRITICAL` | 系统级故障 | 日志 + 立即告警 |
+| 级别         | 场景         | 通知方式        |
+| ------------ | ------------ | --------------- |
+| `DEBUG`    | 调试信息     | 仅日志          |
+| `INFO`     | 正常流程信息 | 日志            |
+| `WARNING`  | 可恢复的警告 | 日志 + 可选通知 |
+| `ERROR`    | 功能失败     | 日志 + 通知     |
+| `CRITICAL` | 系统级故障   | 日志 + 立即告警 |
 
 ---
 
@@ -143,20 +146,20 @@
 
 格式：`{TOOL}_{ERROR_DETAIL}`
 
-| 错误码 | 说明 | 所属工具 |
-|--------|------|----------|
-| `EXEC_TIMEOUT` | 命令执行超时 | exec |
-| `EXEC_NOT_FOUND` | 命令不存在 | exec |
-| `EXEC_PERMISSION_DENIED` | 权限拒绝 | exec |
-| `BROWSER_NOT_INSTALLED` | 浏览器未安装 | browser |
-| `BROWSER_ELEMENT_NOT_FOUND` | 元素未找到 | browser |
-| `BROWSER_NAVIGATION_FAILED` | 导航失败 | browser |
-| `WEB_HTTP_ERROR` | HTTP 请求错误 | web_fetch/web_search |
-| `WEB_TIMEOUT` | 网络超时 | web_fetch/web_search |
-| `FILE_NOT_FOUND` | 文件不存在 | read/write |
-| `FILE_PERMISSION_DENIED` | 文件权限错误 | read/write |
-| `PDF_PARSE_ERROR` | PDF 解析失败 | pdf |
-| `IMAGE_ANALYSIS_ERROR` | 图片分析失败 | image |
+| 错误码                        | 说明          | 所属工具             |
+| ----------------------------- | ------------- | -------------------- |
+| `EXEC_TIMEOUT`              | 命令执行超时  | exec                 |
+| `EXEC_NOT_FOUND`            | 命令不存在    | exec                 |
+| `EXEC_PERMISSION_DENIED`    | 权限拒绝      | exec                 |
+| `BROWSER_NOT_INSTALLED`     | 浏览器未安装  | browser              |
+| `BROWSER_ELEMENT_NOT_FOUND` | 元素未找到    | browser              |
+| `BROWSER_NAVIGATION_FAILED` | 导航失败      | browser              |
+| `WEB_HTTP_ERROR`            | HTTP 请求错误 | web_fetch/web_search |
+| `WEB_TIMEOUT`               | 网络超时      | web_fetch/web_search |
+| `FILE_NOT_FOUND`            | 文件不存在    | read/write           |
+| `FILE_PERMISSION_DENIED`    | 文件权限错误  | read/write           |
+| `PDF_PARSE_ERROR`           | PDF 解析失败  | pdf                  |
+| `IMAGE_ANALYSIS_ERROR`      | 图片分析失败  | image                |
 
 ---
 
@@ -200,13 +203,13 @@ class AgentError:
     retry_after: Optional[int] = None
     details: Optional[dict] = None
     timestamp: str = None
-    
+  
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.now().isoformat()
         if self.severity is None:
             self.severity = self._infer_severity()
-    
+  
     def _infer_severity(self) -> ErrorSeverity:
         if self.type == ErrorType.RESOURCE:
             return ErrorSeverity.CRITICAL
@@ -215,7 +218,7 @@ class AgentError:
         if self.type == ErrorType.TEMPORARY:
             return ErrorSeverity.WARNING
         return ErrorSeverity.INFO
-    
+  
     def to_dict(self) -> dict:
         return {
             "status": "error",
@@ -231,7 +234,7 @@ class AgentError:
                 "timestamp": self.timestamp,
             }
         }
-    
+  
     def to_llm_text(self) -> str:
         """转换为 LLM 友好的文本"""
         text = f"Error [{self.code}]: {self.message}"
@@ -262,7 +265,7 @@ class ErrorPattern:
 
 class ErrorParser:
     """解析工具返回的错误字符串"""
-    
+  
     PATTERNS = [
         # exec 工具
         ErrorPattern(
@@ -334,16 +337,16 @@ class ErrorParser:
             priority=0
         ),
     ]
-    
+  
     @classmethod
     def parse(cls, content: str, tool_name: str) -> Optional[AgentError]:
         """解析错误字符串，返回标准化错误"""
         if not content or not isinstance(content, str):
             return None
-        
+      
         # 按优先级排序
         sorted_patterns = sorted(cls.PATTERNS, key=lambda p: -p.priority)
-        
+      
         for pattern in sorted_patterns:
             match = pattern.regex.search(content)
             if match:
@@ -354,9 +357,9 @@ class ErrorParser:
                 if error.details is not None:
                     error.details["original_content"] = content[:200]
                 return error
-        
+      
         return None
-    
+  
     @classmethod
     def register_pattern(cls, regex: str, factory: Callable, priority: int = 0):
         """动态注册新的错误模式（用于插件扩展）"""
@@ -378,7 +381,7 @@ class ErrorParser:
     class MyResourceManager(ResourceManagerBridge):
         async def report_error(self, error: AgentError, context: dict):
             await self.send_to_control_center(error.to_dict())
-    
+  
     set_resource_manager(MyResourceManager())
 """
 
@@ -389,12 +392,12 @@ from .errors import AgentError
 
 class ResourceManagerBridge(ABC):
     """资源管理系统需要实现的接口"""
-    
+  
     @abstractmethod
     async def report_error(self, error: AgentError, context: dict):
         """
         报告错误给资源管理系统
-        
+      
         Args:
             error: 标准化错误对象
             context: 上下文信息，包含:
@@ -406,34 +409,34 @@ class ResourceManagerBridge(ABC):
                 - agent_depth: Agent 嵌套深度
         """
         pass
-    
+  
     @abstractmethod
     async def request_resource(self, resource_type: str, amount: int) -> bool:
         """
         请求资源扩容
-        
+      
         Args:
             resource_type: 资源类型 (cpu, memory, disk, network)
             amount: 请求数量
-        
+      
         Returns:
             bool: 是否成功获取资源
         """
         pass
-    
+  
     @abstractmethod
     async def release_resource(self, resource_type: str, amount: int):
         """释放资源"""
         pass
-    
+  
     async def should_retry(self, error: AgentError, attempt: int) -> bool:
         """
         决定是否重试（可由资源管理策略覆盖）
-        
+      
         Args:
             error: 错误对象
             attempt: 当前重试次数（从0开始）
-        
+      
         Returns:
             bool: 是否继续重试
         """
@@ -450,10 +453,10 @@ def set_resource_manager(manager: ResourceManagerBridge):
     """设置资源管理器（系统初始化时调用）"""
     global _resource_manager
     _resource_manager = manager
-    
+  
     # 注册为错误处理器
     register_error_handler(lambda err, ctx: _notify_resource_manager(err, ctx))
-    
+  
     print(f"[ResourceBridge] Resource manager registered: {type(manager).__name__}")
 
 def get_resource_manager() -> Optional[ResourceManagerBridge]:
@@ -542,7 +545,7 @@ async def execute_tool(tool_call_id: str, name: str, arguments: str) -> dict:
             "timestamp": error.timestamp,
         }
         emit_error(error, context)
-        
+      
         # 可选：将结构化错误附加到返回中（供前端/资源管理使用）
         # LLM 仍然只看到文本，但其他系统可以读取 _structured_error
         return {
@@ -566,7 +569,7 @@ async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> d
     """执行工具调用（增加子 Agent 工具的错误处理）"""
     from .error_parser import ErrorParser
     from .resource_bridge import emit_error
-    
+  
     extra = self._extra_tools.get(name)
     if extra is not None:
         try:
@@ -581,7 +584,7 @@ async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> d
                 content = extra.handler(**kwargs)
         except Exception as e:
             content = f"Error: {e}"
-        
+      
         # 解析并广播错误
         error = ErrorParser.parse(content, name)
         if error:
@@ -598,7 +601,7 @@ async def _execute_tool(self, tool_call_id: str, name: str, arguments: str) -> d
                 "content": error.to_llm_text(),
                 "_structured_error": error.to_dict(),
             }
-        
+      
         return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
 
     return await execute_tool(tool_call_id, name, arguments)
@@ -619,7 +622,7 @@ from aiagent.error_parser import ErrorParser
 
 class TestErrorParser:
     """测试错误解析器"""
-    
+  
     def test_exec_timeout(self):
         content = "Error: command timed out after 30s"
         error = ErrorParser.parse(content, "exec")
@@ -628,14 +631,14 @@ class TestErrorParser:
         assert error.type == ErrorType.TEMPORARY
         assert error.retryable is True
         assert error.retry_after == 5
-    
+  
     def test_browser_not_installed(self):
         content = "Error: Playwright browser (Chromium) is not installed"
         error = ErrorParser.parse(content, "browser")
         assert error is not None
         assert error.code == "BROWSER_NOT_INSTALLED"
         assert error.type == ErrorType.DEPENDENCY
-    
+  
     def test_http_429(self):
         content = "HTTP Error 429: Too Many Requests"
         error = ErrorParser.parse(content, "web_fetch")
@@ -643,7 +646,7 @@ class TestErrorParser:
         assert error.code == "HTTP_429"
         assert error.type == ErrorType.TEMPORARY
         assert error.retry_after == 10
-    
+  
     def test_no_error(self):
         content = "Successfully executed command"
         error = ErrorParser.parse(content, "exec")
@@ -651,7 +654,7 @@ class TestErrorParser:
 
 class TestAgentError:
     """测试错误数据结构"""
-    
+  
     def test_to_dict(self):
         error = AgentError(
             code="TEST_ERROR",
@@ -663,7 +666,7 @@ class TestAgentError:
         assert d["status"] == "error"
         assert d["error"]["code"] == "TEST_ERROR"
         assert "timestamp" in d["error"]
-    
+  
     def test_to_llm_text_with_retry(self):
         error = AgentError(
             code="TEMP_ERROR",
@@ -694,13 +697,13 @@ from aiagent.errors import AgentError, ErrorType
 class MockResourceManager(ResourceManagerBridge):
     def __init__(self):
         self.errors = []
-    
+  
     async def report_error(self, error: AgentError, context: dict):
         self.errors.append((error, context))
-    
+  
     async def request_resource(self, resource_type: str, amount: int) -> bool:
         return True
-    
+  
     async def release_resource(self, resource_type: str, amount: int):
         pass
 
@@ -729,7 +732,7 @@ class MyResourceManager(ResourceManagerBridge):
     def __init__(self, control_center_url: str):
         self.url = control_center_url
         self.session = aiohttp.ClientSession()
-    
+  
     async def report_error(self, error: AgentError, context: dict):
         """报告错误到控制中心"""
         payload = {
@@ -743,12 +746,12 @@ class MyResourceManager(ResourceManagerBridge):
         ) as resp:
             if resp.status != 200:
                 logger.error(f"Failed to report error: {resp.status}")
-    
+  
     async def request_resource(self, resource_type: str, amount: int) -> bool:
         """请求资源扩容"""
         # 实现资源申请逻辑
         pass
-    
+  
     async def should_retry(self, error: AgentError, attempt: int) -> bool:
         """根据资源状况决定是否重试"""
         # 如果系统负载高，减少重试次数
@@ -771,12 +774,12 @@ set_resource_manager(manager)
 
 资源管理系统会实时收到所有错误，可以：
 
-| 错误类型 | 资源管理动作 |
-|----------|--------------|
-| `RESOURCE` (内存不足) | 触发扩容或清理策略 |
-| `TEMPORARY` (超时) | 自动重试或调整超时参数 |
-| `DEPENDENCY` (未安装) | 触发自动安装流程 |
-| `PERMISSION` | 发送告警通知管理员 |
+| 错误类型                | 资源管理动作           |
+| ----------------------- | ---------------------- |
+| `RESOURCE` (内存不足) | 触发扩容或清理策略     |
+| `TEMPORARY` (超时)    | 自动重试或调整超时参数 |
+| `DEPENDENCY` (未安装) | 触发自动安装流程       |
+| `PERMISSION`          | 发送告警通知管理员     |
 
 ---
 
@@ -784,20 +787,20 @@ set_resource_manager(manager)
 
 ### 1. 对当前系统（短期收益）
 
-| 收益 | 说明 |
-|------|------|
-| **统一错误格式** | 所有错误都有标准结构，便于日志分析 |
+| 收益                      | 说明                                |
+| ------------------------- | ----------------------------------- |
+| **统一错误格式**    | 所有错误都有标准结构，便于日志分析  |
 | **更好的 LLM 提示** | 告诉 LLM 哪些错误可重试，提高成功率 |
-| **便于调试** | 结构化错误包含更多上下文信息 |
+| **便于调试**        | 结构化错误包含更多上下文信息        |
 
 ### 2. 对未来对接（长期收益）
 
-| 收益 | 说明 |
-|------|------|
+| 收益                 | 说明                                      |
+| -------------------- | ----------------------------------------- |
 | **零侵入集成** | 资源管理系统只需实现接口，不改 Agent 代码 |
-| **向后兼容** | 现有字符串错误保留，LLM 不受影响 |
-| **可扩展** | 新增工具只需添加错误模式，无需改架构 |
-| **独立演化** | Agent 和资源管理可以独立升级 |
+| **向后兼容**   | 现有字符串错误保留，LLM 不受影响          |
+| **可扩展**     | 新增工具只需添加错误模式，无需改架构      |
+| **独立演化**   | Agent 和资源管理可以独立升级              |
 
 ### 3. 架构优势
 
@@ -833,26 +836,26 @@ git checkout -b feature/error-standardization-20260326
 
 ### 提交计划
 
-| 提交 | 内容 | 文件 |
-|------|------|------|
-| commit 1 | feat: add AgentError dataclass and ErrorType enum | `aiagent/errors.py` |
-| commit 2 | feat: implement ErrorParser for tool error parsing | `aiagent/error_parser.py` |
-| commit 3 | feat: add ResourceManagerBridge interface | `aiagent/resource_bridge.py` |
-| commit 4 | feat: integrate error parsing into tool registry | `aiagent/tools/__init__.py` |
-| commit 5 | feat: add error handling to Agent._execute_tool | `aiagent/agent.py` |
-| commit 6 | test: add error handling unit tests | `tests/test_error_handling.py` |
-| commit 7 | docs: add error handling documentation | `docs/ERROR_HANDLING.md` |
+| 提交     | 内容                                               | 文件                             |
+| -------- | -------------------------------------------------- | -------------------------------- |
+| commit 1 | feat: add AgentError dataclass and ErrorType enum  | `aiagent/errors.py`            |
+| commit 2 | feat: implement ErrorParser for tool error parsing | `aiagent/error_parser.py`      |
+| commit 3 | feat: add ResourceManagerBridge interface          | `aiagent/resource_bridge.py`   |
+| commit 4 | feat: integrate error parsing into tool registry   | `aiagent/tools/__init__.py`    |
+| commit 5 | feat: add error handling to Agent._execute_tool    | `aiagent/agent.py`             |
+| commit 6 | test: add error handling unit tests                | `tests/test_error_handling.py` |
+| commit 7 | docs: add error handling documentation             | `docs/ERROR_HANDLING.md`       |
 
 ---
 
 ## 风险评估
 
-| 风险 | 可能性 | 影响 | 缓解措施 |
-|------|--------|------|----------|
-| 错误模式匹配不准确 | 中 | 中 | 保留原始内容在 details 中，便于调试 |
-| 性能开销（正则匹配） | 低 | 低 | 只在出现 Error 时解析，正常路径无开销 |
-| LLM 困惑于新的提示 | 低 | 中 | 保持 LLM 文本格式不变，仅增加重试提示 |
-| 事件处理器阻塞主流程 | 低 | 高 | 所有处理器异步执行，错误被捕获 |
+| 风险                 | 可能性 | 影响 | 缓解措施                              |
+| -------------------- | ------ | ---- | ------------------------------------- |
+| 错误模式匹配不准确   | 中     | 中   | 保留原始内容在 details 中，便于调试   |
+| 性能开销（正则匹配） | 低     | 低   | 只在出现 Error 时解析，正常路径无开销 |
+| LLM 困惑于新的提示   | 低     | 中   | 保持 LLM 文本格式不变，仅增加重试提示 |
+| 事件处理器阻塞主流程 | 低     | 高   | 所有处理器异步执行，错误被捕获        |
 
 ---
 
@@ -864,6 +867,6 @@ git checkout -b feature/error-standardization-20260326
 
 ---
 
-**创建日期**: 2026-03-26  
-**作者**: AI Agent Team  
-**状态**: 设计完成，待实施
+**创建日期**: 2026-03-26
+**作者**: emdoor 谢建辉
+**状态**: 设计完成，已实施

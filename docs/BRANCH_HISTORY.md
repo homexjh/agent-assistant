@@ -272,7 +272,21 @@ System Skills:
 
 ## 🔄 进行中分支
 
-### feature/error-standardization-20260326 ✅ 实施完成，待合并
+### feature/fms-integration-20260326 ✅ 实施完成，待合并
+- **目的**: NAS FMS 多模态检索系统集成
+- **基于**: `master` (8a7fbeb)
+- **实施内容**:
+  1. ✅ Phase 1: 3个核心工具（fms_retrieve, fms_chat, fms_list_files）
+  2. ✅ Phase 2: FMS Skill（触发词、使用指南）
+  3. ✅ Phase 3: 21个单元测试 + Web UI 集成测试
+  4. ✅ 文档: FMS_INTEGRATION_PLAN.md + FMS_INTEGRATION_SUMMARY.md
+- **测试验证**:
+  - ✅ 单元测试: 21 passed
+  - ✅ Web UI 测试: 26次工具调用无错误
+  - ✅ 功能覆盖: text2doc/text2image/image2image/doc2doc/text2video/chat/list_files
+- **状态**: **测试通过，待合并到 master**
+
+### feature/error-standardization-20260326 ✅ 已合并
 - **目的**: 错误处理标准化，为资源管理系统对接做准备
 - **基于**: `master` (8a7fbeb)
 - **实施内容**:
@@ -285,7 +299,7 @@ System Skills:
   - ✅ Web UI 测试: EXEC_TIMEOUT, FILE_NOT_FOUND, BROWSER_ELEMENT_NOT_FOUND 等错误正常显示
   - ✅ LLM 友好: 显示错误码 + 重试提示
   - ✅ 结构化数据: `_structured_error` 字段包含机器可读数据
-- **状态**: **测试通过，待合并到 master**
+- **状态**: **已合并到 master** (0c036ee)
 
 ### fix/browser-snapshot-tab-20260325 ✅ 已合并
 - **目的**: 修复浏览器工具的两个问题
