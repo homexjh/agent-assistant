@@ -25,10 +25,10 @@ NAS 部署了 **FMS (File Management System)** 智能文件管理系统，提供
 
 | 阶段              | 目标                                                   | 状态   |
 | ----------------- | ------------------------------------------------------ | ------ |
-| **Phase 1** | 核心工具封装（fms_retrieve, fms_chat, fms_list_files） | 待实施 |
-| **Phase 2** | FMS Skill 创建（触发词、使用指南）                     | 待实施 |
-| **Phase 3** | 测试验证（工具测试 + Web UI 集成测试）                 | 待实施 |
-| **Phase 4** | 扩展功能（fms_delete, fms_task_control，可选）         | 预留   |
+| **Phase 1** | 核心工具封装（fms_retrieve, fms_chat, fms_list_files） | ✅ 已完成 |
+| **Phase 2** | FMS Skill 创建（触发词、使用指南）                     | ✅ 已完成 |
+| **Phase 3** | 测试验证（工具测试 + Web UI 集成测试）                 | ✅ 已完成 |
+| **Phase 4** | 文件下载功能（fms_download）                           | ✅ 已完成 |
 
 ### 1.3 对接价值
 
@@ -45,15 +45,16 @@ NAS 部署了 **FMS (File Management System)** 智能文件管理系统，提供
 
 ### 2.1 核心接口清单
 
-| 接口                                    | 方法 | 功能         | 优先级       |
-| --------------------------------------- | ---- | ------------ | ------------ |
-| `/api/fms/retrieve`                   | POST | 多模态检索   | **P0** |
-| `/api/fms/chat`                       | POST | 知识库问答   | **P0** |
-| `/api/fms/get_knowledge_files`        | GET  | 获取文件列表 | **P0** |
-| `/api/fms/delete_file`                | POST | 删除文件     | P1           |
-| `/api/fms/ingest_file`                | POST | 文件入库     | 预留         |
-| `/api/fms/ingest_progress`            | GET  | 入库进度     | 预留         |
-| `/api/fms/{pause/resume/cancel}_task` | POST | 任务管理     | 预留         |
+| 接口                                    | 方法 | 功能         | 优先级       | 状态 |
+| --------------------------------------- | ---- | ------------ | ------------ | ---- |
+| `/api/fms/retrieve`                   | POST | 多模态检索   | **P0** | ✅ 已实现 |
+| `/api/fms/chat`                       | POST | 知识库问答   | **P0** | ✅ 已实现 |
+| `/api/fms/get_knowledge_files`        | GET  | 获取文件列表 | **P0** | ✅ 已实现 |
+| `/api/fms/download_file`              | GET  | 文件下载     | **P1** | ✅ 已实现 |
+| `/api/fms/delete_file`                | POST | 删除文件     | P2           | 预留   |
+| `/api/fms/ingest_file`                | POST | 文件入库     | 预留         | 预留   |
+| `/api/fms/ingest_progress`            | GET  | 入库进度     | 预留         | 预留   |
+| `/api/fms/{pause/resume/cancel}_task` | POST | 任务管理     | 预留         | 预留   |
 
 ### 2.2 检索类型详解
 
@@ -768,13 +769,15 @@ asyncio.run(test())
 
 ## 六、实施计划
 
-| 日期  | 任务      | 产出                             |
-| ----- | --------- | -------------------------------- |
-| Day 1 | Phase 1.1 | `aiagent/tools/fms.py`         |
-| Day 2 | Phase 1.2 | 工具注册完成                     |
-| Day 3 | Phase 2   | `skills/system/fms/SKILL.md`   |
-| Day 4 | Phase 3   | `tests/test_fms.py` + 测试通过 |
-| Day 5 | 文档整理  | 更新本文档 + BRANCH_HISTORY      |
+| 日期       | 任务           | 产出                                      |
+| ---------- | -------------- | ----------------------------------------- |
+| Day 1      | Phase 1.1      | `aiagent/tools/fms.py`                  |
+| Day 2      | Phase 1.2      | 工具注册完成                              |
+| Day 3      | Phase 2        | `skills/system/fms/SKILL.md`            |
+| Day 4      | Phase 3        | `tests/test_fms.py` + 测试通过          |
+| Day 5      | 文档整理       | 更新本文档 + BRANCH_HISTORY               |
+| 2026-03-28 | Phase 4        | `fms_download` 工具实现                   |
+| 2026-03-28 | 文档更新       | 更新 SUMMARY.md + SKILL.md + 本计划 |
 
 ---
 
@@ -796,5 +799,6 @@ asyncio.run(test())
 ---
 
 **创建日期**: 2026-03-26
+**更新日期**: 2026-03-28
 **作者**: emdoor 谢建辉
-**状态**: 已完成
+**状态**: Phase 1-4 全部完成
