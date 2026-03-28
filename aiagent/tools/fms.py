@@ -1,18 +1,22 @@
 """
 FMS (File Management System) 工具
 
-NAS 智能文件管理系统对接模块，支持多模态检索和知识库问答。
+NAS 智能文件管理系统对接模块，支持多模态检索、知识库问答和文件下载。
 """
 
 from __future__ import annotations
 import aiohttp
 import json
+import os
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from .types import RegisteredTool, ToolDefinition
 
 # FMS 服务器配置
 FMS_BASE_URL = "http://172.16.50.51:8001"
 DEFAULT_TIMEOUT = 30  # 秒
+DOWNLOAD_TIMEOUT = 120  # 下载文件超时时间（秒）
+DEFAULT_DOWNLOAD_DIR = os.path.expanduser("~/Downloads/fms")  # 默认下载目录
 
 
 # ========== 内部辅助函数 ==========
@@ -217,6 +221,102 @@ async def fms_chat_handler(query: str) -> str:
     return _format_chat_response(data.get("data", {}))
 
 
+async def fms_download_handler(
+    file_path: str,
+    save_path: Optional[str] = None,
+    use_stream: bool = False,
+) -> str:
+    """
+    从 NAS FMS 下载文件到本地
+    
+    支持下载 NAS 知识库中的文档、图片、视频等各类文件到本地临时目录，
+    下载后可用 pdf、image 等工具打开查看。
+    
+    Args:
+        file_path: NAS 上的文件完整路径，如 /data/docs/report.pdf
+        save_path: 本地保存路径（可选），默认保存到 ~/Downloads/fms/
+        use_stream: 是否使用流式下载（适合大文件，默认False）
+    
+    Returns:
+        下载结果信息，包含本地文件路径
+    
+    使用示例:
+        fms_download(file_path="/data/docs/班车路线.pdf")
+        fms_download(file_path="/data/images/photo.jpg", save_path="/tmp/myphoto.jpg")
+    """
+    if not file_path or not file_path.strip():
+        return "Error: 文件路径不能为空"
+    
+    # 确定保存路径
+    if save_path:
+        local_path = Path(save_path)
+    else:
+        # 使用默认下载目录，保留原始文件名
+        filename = os.path.basename(file_path)
+        # 处理 URL 编码的文件名
+        from urllib.parse import unquote
+        filename = unquote(filename)
+        local_path = Path(DEFAULT_DOWNLOAD_DIR) / filename
+    
+    # 确保目录存在
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # 选择端点（普通下载或流式下载）
+    endpoint = "/api/fms/download_file/stream" if use_stream else "/api/fms/download_file"
+    url = f"{FMS_BASE_URL}{endpoint}"
+    
+    # URL 编码文件路径
+    from urllib.parse import quote
+    encoded_path = quote(file_path, safe='')
+    
+    try:
+        timeout = aiohttp.ClientTimeout(total=DOWNLOAD_TIMEOUT)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, params={"file_path": encoded_path}) as resp:
+                if resp.status == 404:
+                    error_detail = await resp.text()
+                    return f"Error [FMS_FILE_NOT_FOUND]: 文件不存在: {file_path}\n{error_detail}"
+                
+                if resp.status == 400:
+                    error_detail = await resp.text()
+                    return f"Error [FMS_INVALID_PATH]: 路径不是文件: {file_path}\n{error_detail}"
+                
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    return f"Error [FMS_DOWNLOAD_ERROR]: 下载失败 (HTTP {resp.status})\n{error_text[:200]}"
+                
+                # 获取文件大小信息
+                content_length = resp.headers.get('Content-Length')
+                size_str = f" ({int(content_length)/1024:.1f} KB)" if content_length else ""
+                
+                # 写入文件
+                with open(local_path, 'wb') as f:
+                    async for chunk in resp.content.iter_chunked(8192):
+                        f.write(chunk)
+                
+                # 返回结果
+                abs_path = local_path.resolve()
+                file_size = local_path.stat().st_size
+                size_mb = file_size / (1024 * 1024)
+                
+                return (
+                    f"✅ 文件下载成功\n"
+                    f"📁 NAS 路径: {file_path}\n"
+                    f"💾 本地路径: {abs_path}\n"
+                    f"📊 文件大小: {size_mb:.2f} MB ({file_size:,} bytes)\n\n"
+                    f"💡 提示: 现在可以使用 pdf、image 或 read 工具打开此文件"
+                )
+    
+    except aiohttp.ClientConnectorError as e:
+        return f"Error [FMS_CONNECTION_ERROR]: 无法连接到 FMS 服务器: {e}"
+    except aiohttp.ClientTimeout as e:
+        return f"Error [FMS_TIMEOUT]: 下载超时 ({DOWNLOAD_TIMEOUT}s): {e}\n💡 建议: 大文件请设置 use_stream=true"
+    except PermissionError as e:
+        return f"Error [PERMISSION_DENIED]: 无法写入文件: {e}\n💡 请检查目录权限: {local_path.parent}"
+    except Exception as e:
+        return f"Error [FMS_DOWNLOAD_EXCEPTION]: 下载异常: {type(e).__name__}: {e}"
+
+
 async def fms_list_files_handler(file_type: Optional[str] = None) -> str:
     """
     获取 FMS 知识库文件列表
@@ -339,4 +439,42 @@ fms_list_files_tool = RegisteredTool(
         },
     ),
     handler=fms_list_files_handler,
+)
+
+
+fms_download_tool = RegisteredTool(
+    definition=ToolDefinition(
+        type="function",
+        function={
+            "name": "fms_download",
+            "description": (
+                "从 NAS FMS 下载文件到本地。"
+                "当用户需要打开、查看或分析 NAS 上的文件时使用此工具下载到本地。"
+                "支持下载文档(PDF/Word等)、图片、视频等任意类型文件。\n"
+                "使用场景：\n"
+                "- 用户说'打开这个文件'、'查看这张图片'、'阅读这篇文档'\n"
+                "- 需要配合 pdf、image、read 等工具使用前的下载步骤"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "NAS 上的文件完整路径，如 /data/docs/report.pdf 或 /workspace/xxx/photo.jpg",
+                    },
+                    "save_path": {
+                        "type": "string",
+                        "description": "本地保存路径（可选），如 /tmp/myfile.pdf。不填则保存到默认下载目录",
+                    },
+                    "use_stream": {
+                        "type": "boolean",
+                        "description": "是否使用流式下载（适合大文件>100MB），默认false",
+                        "default": False,
+                    },
+                },
+                "required": ["file_path"],
+            },
+        },
+    ),
+    handler=fms_download_handler,
 )

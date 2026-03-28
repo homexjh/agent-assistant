@@ -272,19 +272,24 @@ System Skills:
 
 ## 🔄 进行中分支
 
-### feature/fms-integration-20260326 ✅ 实施完成，待合并
+### feature/fms-integration-20260326 ⏳ Phase 4 下载功能已实现，待测试合并
 - **目的**: NAS FMS 多模态检索系统集成
 - **基于**: `master` (8a7fbeb)
 - **实施内容**:
   1. ✅ Phase 1: 3个核心工具（fms_retrieve, fms_chat, fms_list_files）
   2. ✅ Phase 2: FMS Skill（触发词、使用指南）
   3. ✅ Phase 3: 21个单元测试 + Web UI 集成测试
-  4. ✅ 文档: FMS_INTEGRATION_PLAN.md + FMS_INTEGRATION_SUMMARY.md
+  4. ✅ **Phase 4 (2026-03-28): 文件下载功能（fms_download）**
+     - 实现 `fms_download_handler` 支持普通/流式下载
+     - 默认保存到 `~/Downloads/fms/`，支持自定义路径
+     - 完整错误处理（404/400/超时/权限等）
+  5. ✅ 文档更新: FMS_INTEGRATION_PLAN.md + FMS_INTEGRATION_SUMMARY.md + SKILL.md
 - **测试验证**:
-  - ✅ 单元测试: 21 passed
+  - ✅ 单元测试: 21 passed (Phase 1-3)
   - ✅ Web UI 测试: 26次工具调用无错误
   - ✅ 功能覆盖: text2doc/text2image/image2image/doc2doc/text2video/chat/list_files
-- **状态**: **测试通过，待合并到 master**
+  - ⏳ **新增: fms_download 单元测试 (4个测试用例)**
+- **状态**: **Phase 1-4 已实现，待合并到 master**
 
 ### feature/error-standardization-20260326 ✅ 已合并
 - **目的**: 错误处理标准化，为资源管理系统对接做准备

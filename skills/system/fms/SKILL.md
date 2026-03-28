@@ -1,6 +1,6 @@
 ---
 name: nas-fms
-description: NAS智能文件管理系统，支持多模态检索（文本搜文档/图片/视频、以图搜图）和知识库问答
+description: NAS智能文件管理系统，支持多模态检索、知识库问答和文件下载
 triggers:
   - "搜索NAS"
   - "NAS上"
@@ -10,6 +10,9 @@ triggers:
   - "搜索图片"
   - "搜索视频"
   - "公司文档"
+  - "下载NAS文件"
+  - "打开NAS文件"
+  - "查看NAS图片"
 ---
 
 # NAS FMS 智能文件管理
@@ -21,6 +24,7 @@ triggers:
 - 🖼️ **以图搜图**：上传图片找相似图片
 - 💬 **知识库问答**：基于公司内部文档智能问答
 - 📋 **文件列表**：查看知识库中所有文件
+- ⬇️ **文件下载**：将 NAS 文件下载到本地，支持用 pdf/image 工具打开
 
 ## 触发场景
 
@@ -32,6 +36,8 @@ triggers:
 | 搜索视频 | "搜索产品介绍视频" | `fms_retrieve(type="text2video")` |
 | 知识问答 | "公司班车有哪些路线" | `fms_chat` |
 | 查看文件 | "NAS里有多少文件" | `fms_list_files` |
+| 下载文件 | "下载NAS上的班车文档" | `fms_download` |
+| 打开文件 | "打开NAS上的report.pdf" | `fms_download` + pdf/read |
 
 ## 使用示例
 
@@ -102,6 +108,57 @@ triggers:
 }
 ```
 
+### 示例 5：下载并打开文件
+用户："打开NAS上的 /data/docs/班车路线.pdf"
+
+思考过程：
+1. 用户要求打开 NAS 上的文件
+2. 首先使用 `fms_download` 下载到本地
+3. 然后用 `pdf` 工具读取内容
+
+步骤1 - 下载：
+```json
+{
+  "tool": "fms_download",
+  "arguments": {
+    "file_path": "/data/docs/班车路线.pdf"
+  }
+}
+```
+
+步骤2 - 读取（下载成功后）：
+```json
+{
+  "tool": "pdf",
+  "arguments": {
+    "pdf": "~/Downloads/fms/班车路线.pdf"
+  }
+}
+```
+
+### 示例 6：下载并查看图片
+用户："显示NAS上的 /data/images/风景.jpg"
+
+步骤1 - 下载：
+```json
+{
+  "tool": "fms_download",
+  "arguments": {
+    "file_path": "/data/images/风景.jpg"
+  }
+}
+```
+
+步骤2 - 分析图片（下载成功后）：
+```json
+{
+  "tool": "image",
+  "arguments": {
+    "image": "~/Downloads/fms/风景.jpg"
+  }
+}
+```
+
 ## 注意事项
 
 1. **路径格式**：以图搜图时需要提供 NAS 上的完整路径，如 `/workspace/.../photo.jpg`
@@ -115,3 +172,31 @@ triggers:
 - `fms_retrieve` - 多模态检索（核心工具）
 - `fms_chat` - 知识库问答
 - `fms_list_files` - 获取文件列表
+- `fms_download` - 下载文件到本地（支持配合 pdf/image/read 使用）
+
+## 文件下载使用指南
+
+### 何时使用 fms_download
+- 用户说"打开/查看/阅读 NAS 上的文件"
+- 需要配合 pdf、image、read 等工具处理 NAS 文件时
+- 需要先下载到本地才能进行后续操作
+
+### 文件保存位置
+- 默认：`~/Downloads/fms/`（保留原始文件名）
+- 自定义：通过 `save_path` 参数指定完整路径
+
+### 完整工作流程
+```
+用户: "打开NAS上的文档.pdf"
+  ↓
+调用 fms_download(file_path="/data/docs/文档.pdf")
+  ↓
+获取本地路径: ~/Downloads/fms/文档.pdf
+  ↓
+根据文件类型选择工具:
+  - PDF → pdf 工具
+  - 图片 → image 工具
+  - 文本 → read 工具
+  ↓
+展示内容给用户
+```

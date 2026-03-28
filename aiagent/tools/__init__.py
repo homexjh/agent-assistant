@@ -50,6 +50,7 @@ from .fms import (
     fms_retrieve_tool,
     fms_chat_tool,
     fms_list_files_tool,
+    fms_download_tool,
 )
 
 # ── 注册表 ────────────────────────────────────────────────
@@ -87,6 +88,7 @@ _register(cron_tool)
 _register(fms_retrieve_tool)
 _register(fms_chat_tool)
 _register(fms_list_files_tool)
+_register(fms_download_tool)
 
 # 注册增强 Git 工具
 for name, definition, handler in git_enhanced_tools:

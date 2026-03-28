@@ -1,7 +1,7 @@
 # NAS FMS 系统集成总结与后续规划
 
-> **实施状态**: ✅ Phase 1-3 已完成（2026-03-26）
-> **测试状态**: ✅ 26次工具调用无错误
+> **实施状态**: ✅ Phase 1-4 已完成（2026-03-28）
+> **测试状态**: ✅ 26次工具调用无错误，下载功能待测试
 > **分支**: `feature/fms-integration-20260326`
 
 ---
@@ -19,6 +19,7 @@
 | 文档相似度 | `fms_retrieve(type="doc2doc")`     | ✅   | 找相似文档           |
 | 知识库问答 | `fms_chat`                         | ✅   | 基于文档内容问答     |
 | 文件列表   | `fms_list_files`                   | ✅   | 按类型筛选           |
+| **文件下载** | **`fms_download`**                 | **✅** | **新增：下载NAS文件到本地** |
 
 ### 1.2 技术实现细节
 
@@ -62,48 +63,81 @@
 
 ## 二、当前限制与问题
 
-### 2.1 无法直接阅读文件内容
+### ✅ 2.1 文件下载功能（2026-03-28 已实现）
 
-**问题描述：**
+**实现方式：**
 
+```python
+# 使用 fms_download 工具
+fms_download(file_path="/data/docs/report.pdf")
+
+# 返回：
+# ✅ 文件下载成功
+# 📁 NAS 路径: /data/docs/report.pdf
+# 💾 本地路径: ~/Downloads/fms/report.pdf
+# 📊 文件大小: 2.50 MB
 ```
-用户: "打开并阅读 /workspace/.../亿道班车路线.pdf"
-当前: Error [FILE_NOT_FOUND]: File not found
-原因: 文件在NAS服务器上，不在本地文件系统
+
+**配合其他工具使用：**
+
+```python
+# 1. 先下载NAS文件
+local_path = await fms_download_handler("/data/docs/班车路线.pdf")
+
+# 2. 再用 pdf 工具读取
+from aiagent.tools.pdf import pdf_handler
+content = await pdf_handler("~/Downloads/fms/班车路线.pdf")
+
+# 3. 或用 image 工具分析图片
+from aiagent.tools.image import image_handler
+analysis = await image_handler(image="~/Downloads/fms/photo.jpg")
 ```
 
-**FMS 接口文档未提供的功能：**
+**接口说明：**
 
-| 功能         | 是否支持      | 说明                                   |
-| ------------ | ------------- | -------------------------------------- |
-| 文件下载     | ❌ 不支持     | 无 `/api/fms/download` 接口          |
-| 文件预览     | ❌ 不支持     | 无文件内容流式传输                     |
-| 完整内容获取 | ⚠️ 部分支持 | retrieve 只返回片段，chat 返回生成摘要 |
+| 功能         | 状态      | 接口                                      | 说明               |
+| ------------ | --------- | ----------------------------------------- | ------------------ |
+| 文件下载     | ✅ 已实现 | `GET /api/fms/download_file`            | 普通文件下载       |
+| 流式下载     | ✅ 已实现 | `GET /api/fms/download_file/stream`     | 大文件推荐使用     |
+| 完整内容获取 | ✅ 已实现 | 下载后配合 pdf/image/read 工具          | 可完整阅读文件内容 |
 
-### 2.2 图片无法本地预览
+### ✅ 2.2 图片本地预览（2026-03-28 已解决）
 
-**问题描述：**
+**解决方案：**
 
+```python
+# 步骤1: 下载图片到本地
+await fms_download_handler("/data/images/baby-2972221_1280.jpg")
+
+# 步骤2: 用 image 工具分析
+await image_handler(image="~/Downloads/fms/baby-2972221_1280.jpg")
 ```
-用户: "显示NAS上的 baby-2972221_1280.jpg"
-当前: Error [FILE_NOT_FOUND]: File not found
-原因: image 工具只能读取本地路径，无法读取NAS路径
+
+**工作流程：**
+```
+用户: "显示NAS上的图片"
+  ↓
+fms_download 下载到 ~/Downloads/fms/
+  ↓
+image 工具分析本地文件
+  ↓
+展示分析结果
 ```
 
 ---
 
 ## 三、需要 NAS 配合的方案
 
-### 方案 A：添加文件下载接口（推荐）
+### ✅ 方案 A：文件下载接口（2026-03-28 已完成）
 
-**NAS 需要提供的接口：**
+**NAS 提供的接口：**
 
 ```yaml
-# 新增接口: GET /api/fms/download
+# 已实现: GET /api/fms/download_file
 功能: 下载NAS上的文件到本地临时目录
 请求:
   method: GET
-  url: /api/fms/download?path=/workspace/.../file.pdf
+  url: /api/fms/download_file?file_path=/data/docs/file.pdf
   
 响应:
   success:
@@ -114,49 +148,46 @@
     message: "文件不存在"
 ```
 
-**我们这边实现：**
+**我们实现的 fms_download 工具：**
 
 ```python
-# aiagent/tools/fms.py 新增
+# aiagent/tools/fms.py 已实现
 
-async def fms_download_handler(file_path: str, save_dir: str = "/tmp/fms") -> str:
+async def fms_download_handler(
+    file_path: str,
+    save_path: Optional[str] = None,
+    use_stream: bool = False,
+) -> str:
     """
-    从NAS下载文件到本地临时目录
-  
-    流程:
-    1. 调用 GET /api/fms/download?path={file_path}
-    2. 保存到本地 /tmp/fms/{filename}
-    3. 返回本地路径，供其他工具使用
+    从 NAS FMS 下载文件到本地
+    
+    支持：
+    - 普通下载：适合小文件 (< 100MB)
+    - 流式下载：适合大文件 (> 100MB)，设置 use_stream=True
+    - 自定义保存路径：通过 save_path 参数
+    - 默认保存到：~/Downloads/fms/
     """
-    import aiohttp
-    import os
-  
-    url = f"{FMS_BASE_URL}/api/fms/download"
-  
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, params={"path": file_path}) as resp:
-            if resp.status != 200:
-                return f"Error: 下载失败 {resp.status}"
-          
-            # 保存到本地
-            filename = os.path.basename(file_path)
-            local_path = os.path.join(save_dir, filename)
-            os.makedirs(save_dir, exist_ok=True)
-          
-            with open(local_path, 'wb') as f:
-                f.write(await resp.read())
-          
-            return f"文件已下载: {local_path}"
+    # 实现细节见源码...
+```
 
+**使用示例：**
 
-# 使用流程
-async def read_nas_file(file_path: str):
-    # 1. 先下载到本地
-    local_path = await fms_download_handler(file_path)
-  
-    # 2. 再用现有工具读取
-    from aiagent.tools.file import read_file_handler
-    return await read_file_handler(local_path)
+```python
+# 基本使用 - 下载到默认目录
+await fms_download_handler("/data/docs/班车路线.pdf")
+# 返回: 文件已保存到 ~/Downloads/fms/班车路线.pdf
+
+# 自定义保存路径
+await fms_download_handler(
+    file_path="/data/docs/report.pdf",
+    save_path="/tmp/myreport.pdf"
+)
+
+# 大文件流式下载
+await fms_download_handler(
+    file_path="/data/videos/tutorial.mp4",
+    use_stream=True
+)
 ```
 
 ### 方案 B：Samba/NFS 共享挂载（系统级）
@@ -264,13 +295,20 @@ return f"![图片]({image_url})"
 | P1     | 文档完善      | 更新使用文档，说明当前限制                 |
 | P2     | 用户引导      | 告知用户目前只能获取片段，无法下载完整文件 |
 
-### 中期（需要NAS配合）
+### 中期（已完成）
 
-| 优先级 | 任务     | 需要NAS提供                | 我们实现              |
-| ------ | -------- | -------------------------- | --------------------- |
-| P1     | 文件下载 | `/api/fms/download` 接口 | `fms_download` 工具 |
-| P2     | 文件预览 | 文件流式传输或静态HTTP访问 | 本地缓存 + 预览       |
-| P3     | 批量下载 | 支持多文件下载             | 批量处理工具          |
+| 优先级 | 任务     | 状态 | 说明                              |
+| ------ | -------- | ---- | --------------------------------- |
+| ~~P1~~ | ~~文件下载~~ | ✅ | ~~`/api/fms/download_file` 接口已实现~~ |
+| P2     | 批量下载 | 待办 | 支持多文件同时下载                |
+| P3     | 自动打开 | 待办 | 下载后自动用对应工具打开          |
+
+### 新需求（可选增强）
+
+| 优先级 | 任务     | 说明                              |
+| ------ | -------- | --------------------------------- |
+| P2     | 下载缓存 | 避免重复下载同一文件              |
+| P3     | 断点续传 | 大文件下载中断后恢复              |
 
 ### 长期（可选增强）
 
@@ -290,7 +328,22 @@ return f"![图片]({image_url})"
 | fms_chat 问答    | 7            | ✅ 通过               | 回答准确         |
 | fms_list_files   | 5            | ✅ 通过               | 正确统计7个文件  |
 | 边界情况测试     | 1            | ✅ 通过               | 高阈值/错别字等  |
-| **总计**   | **26** | **✅ 全部通过** | 无错误           |
+| **fms_download** | **待测试**   | **⏳ 新增功能**       | 需要NAS配合测试  |
+| **总计**   | **26+** | **✅ 全部通过** | 等待下载功能验证 |
+
+### 下载功能测试计划
+
+```bash
+# 测试1: 基本下载
+curl "http://172.16.50.51:8001/api/fms/download_file?file_path=/data/docs/test.pdf"
+
+# 测试2: 流式下载
+curl "http://172.16.50.51:8001/api/fms/download_file/stream?file_path=/data/videos/test.mp4"
+
+# 测试3: 通过 Agent 工具下载
+# 在 Web UI 中测试：
+# "下载NAS上的 /data/docs/班车路线.pdf"
+```
 
 ---
 
@@ -305,5 +358,6 @@ return f"![图片]({image_url})"
 ---
 
 **创建日期**: 2026-03-26
+**更新日期**: 2026-03-28
 **作者**: emdoor 谢建辉
-**状态**: Phase 1-3 已完成，待NAS配合实现文件下载
+**状态**: Phase 1-4 已完成，`fms_download` 工具已实现待测试

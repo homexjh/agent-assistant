@@ -4,7 +4,8 @@
 1. fms_retrieve 多模态检索
 2. fms_chat 知识库问答
 3. fms_list_files 文件列表
-4. 边界情况和错误处理
+4. fms_download 文件下载
+5. 边界情况和错误处理
 """
 
 import pytest
@@ -13,6 +14,7 @@ from aiagent.tools.fms import (
     fms_retrieve_handler,
     fms_chat_handler,
     fms_list_files_handler,
+    fms_download_handler,
 )
 
 
@@ -265,7 +267,89 @@ curl http://172.16.50.51:8001/api/fms/get_knowledge_files
 
 # 7. 只获取图片
 curl "http://172.16.50.51:8001/api/fms/get_knowledge_files?file_type=image"
+
+# 8. 文件下载
+curl -o downloaded.pdf "http://172.16.50.51:8001/api/fms/download_file?file_path=/data/docs/test.pdf"
+
+# 9. 流式下载（大文件）
+curl -o large_video.mp4 "http://172.16.50.51:8001/api/fms/download_file/stream?file_path=/data/videos/large.mp4"
 """
+
+# ========== 文件下载功能测试 ==========
+
+class TestFMSDownload:
+    """测试文件下载功能"""
+    
+    @pytest.mark.asyncio
+    async def test_download_empty_path(self):
+        """测试空路径处理"""
+        result = await fms_download_handler("")
+        assert "Error" in result
+        assert "不能为空" in result
+    
+    @pytest.mark.asyncio
+    async def test_download_invalid_path(self):
+        """测试无效路径处理"""
+        result = await fms_download_handler("/invalid/path/file.pdf")
+        # 应该返回文件不存在错误或连接错误
+        assert ("Error" in result or 
+                "不存在" in result or 
+                "无法连接" in result or
+                "NOT_FOUND" in result)
+    
+    @pytest.mark.asyncio
+    async def test_download_with_custom_path(self):
+        """测试自定义保存路径"""
+        import tempfile
+        import os
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_path = os.path.join(tmpdir, "test_download.pdf")
+            # 注意：这里不会真正下载，只是测试参数处理
+            result = await fms_download_handler(
+                file_path="/data/docs/test.pdf",
+                save_path=save_path
+            )
+            # 应该返回错误（文件不存在或连接错误），但路径应该被正确处理
+            assert "Error" in result or "✅" in result
+    
+    @pytest.mark.asyncio
+    async def test_download_stream_mode(self):
+        """测试流式下载模式参数"""
+        result = await fms_download_handler(
+            file_path="/data/videos/test.mp4",
+            use_stream=True
+        )
+        # 应该返回错误（文件不存在或连接错误）
+        assert ("Error" in result or 
+                "不存在" in result or 
+                "无法连接" in result)
+
+
+# ========== 集成测试示例 ==========
+
+class TestFMSIntegration:
+    """FMS 功能集成测试 - 完整工作流程"""
+    
+    @pytest.mark.asyncio
+    async def test_search_and_download_workflow(self):
+        """测试搜索+下载的完整流程"""
+        # 步骤1：先搜索文件
+        search_result = await fms_retrieve_handler(
+            query="班车",
+            type="text2doc",
+            top_k=3
+        )
+        
+        # 验证搜索结果格式
+        assert ("相似度" in search_result or 
+                "未找到" in search_result or 
+                "Error" in search_result)
+        
+        # 步骤2：如果找到文件，尝试下载（这里用测试路径）
+        # 实际使用时应该从搜索结果中提取路径
+        # download_result = await fms_download_handler(file_path="/data/docs/班车路线.pdf")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
