@@ -28,6 +28,12 @@ Thumbs.db
 *.log
 .aiagent/backups/
 
+# Runtime data
+data/sessions/
+workspace/subagents/
+workspace/memory/
+workspace/CRON.json
+
 # Testing
 .pytest_cache/
 .coverage
