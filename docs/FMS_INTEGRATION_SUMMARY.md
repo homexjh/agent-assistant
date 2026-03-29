@@ -352,7 +352,7 @@ curl "http://172.16.50.51:8001/api/fms/download_file/stream?file_path=/data/vide
 | 文档                                                                                                           | 说明              |
 | -------------------------------------------------------------------------------------------------------------- | ----------------- |
 | [FMS_INTEGRATION_PLAN.md](./FMS_INTEGRATION_PLAN.md)                                                              | 详细实施方案      |
-| [FMS API 文档](http://172.16.50.63:10880/zengzhiyun/agentone-fms/src/feature/agentone_fms/pc/api/api_document.md) | NAS提供的接口文档 |
+| [FMS API 文档](http://172.16.50.63:10880/zengzhiyun/agentone-fms/src/feature/agentone_fms/pc/api/api_document.md) *(内网地址)* | NAS提供的接口文档 |
 | skills/system/fms/SKILL.md                                                                                     | Skill 使用指南    |
 
 ---

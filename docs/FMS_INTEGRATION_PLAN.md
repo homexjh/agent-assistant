@@ -793,7 +793,7 @@ asyncio.run(test())
 
 ## 八、相关文档
 
-- [FMS API 文档](http://172.16.50.63:10880/zengzhiyun/agentone-fms/src/feature/agentone_fms/pc/api/api_document.md)
+- [FMS API 文档](http://172.16.50.63:10880/zengzhiyun/agentone-fms/src/feature/agentone_fms/pc/api/api_document.md) *(内网地址，仅限内部网络访问)*
 - [错误处理标准化](./ERROR_HANDLING.md) - 复用 AgentError 处理 FMS 错误
 
 ---

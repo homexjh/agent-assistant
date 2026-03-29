@@ -1,16 +1,19 @@
 # Git 工作流程指南
 
 > 适用于 aiagent 项目的多人协作开发
+> 
+> **远程仓库**: https://github.com/homexjh/agent-assistant.git
 
 ---
 
 ## 目录
 
 1. [日常开发流程](#一日常开发流程)
-2. [分支管理规范](#二分支管理规范)
-3. [版本回退指南](#三版本回退指南)
-4. [常见问题解决](#四常见问题解决)
-5. [命令速查表](#五命令速查表)
+2. [协同开发模式](#二协同开发模式)
+3. [分支管理规范](#三分支管理规范)
+4. [版本回退指南](#四版本回退指南)
+5. [常见问题解决](#五常见问题解决)
+6. [命令速查表](#六命令速查表)
 
 ---
 
@@ -59,7 +62,33 @@ $ git push -u origin 20240316-tts-zhangsan
 | `test:`     | 添加测试  | `test: 添加子Agent单元测试`  |
 | `chore:`    | 构建/工具 | `chore: 添加.gitignore`      |
 
-### 1.3 完成开发，合并到 master
+### 1.3 完成开发，合并到 master（推荐通过 Pull Request）
+
+**方式一：通过 GitHub Pull Request（推荐，适合团队协作）**
+
+```bash
+# 1. 推送你的功能分支到远程
+$ git push -u origin 20240316-tts-zhangsan
+
+# 2. 打开 GitHub 仓库页面
+#    https://github.com/homexjh/agent-assistant
+
+# 3. 点击 "Compare & pull request" 创建 PR
+# 4. 填写 PR 标题和描述，请求合并到 master
+# 5. 由项目维护者 Review 后点击 "Merge pull request"
+
+# 6. 合并后，本地切换到 master 并拉取最新代码
+$ git checkout master
+$ git pull
+
+# 7. 删除本地分支（可选）
+$ git branch -d 20240316-tts-zhangsan
+
+# 8. 删除远程分支（可选）
+$ git push origin --delete 20240316-tts-zhangsan
+```
+
+**方式二：本地直接合并（仅适合个人开发或紧急情况）**
 
 ```bash
 # 1. 切回 master
@@ -80,7 +109,44 @@ $ git branch -d 20240316-tts-zhangsan
 
 ---
 
-## 二、分支管理规范
+## 二、协同开发模式
+
+### 2.1 直接协作（推荐给小团队）
+
+**前提**：项目 Owner 在 GitHub 上添加你为协作者。
+
+1. Owner 打开 https://github.com/homexjh/agent-assistant/settings/access
+2. 点击 **Invite a collaborator**，输入你的 GitHub 用户名
+3. 接受邀请后，即可直接推送分支和创建 PR
+
+### 2.2 Fork 协作（推荐给外部贡献者）
+
+1. 打开 https://github.com/homexjh/agent-assistant
+2. 点击右上角 **Fork** 按钮，复制仓库到自己的账号下
+3. 克隆自己的 Fork 到本地：
+   ```bash
+   git clone https://github.com/你的用户名/agent-assistant.git
+   cd agent-assistant
+   ```
+4. 开发完成后，向原仓库提交 Pull Request
+
+### 2.3 首次克隆项目
+
+```bash
+# 克隆仓库
+git clone https://github.com/homexjh/agent-assistant.git
+cd agent-assistant
+
+# 安装依赖
+uv sync
+
+# 复制环境变量模板（各自配置自己的 API Key）
+cp .env.example .env
+```
+
+---
+
+## 三、分支管理规范
 
 ### 2.1 分支命名规则
 
@@ -142,7 +208,7 @@ $ git branch --no-merged   # 未合并的分支
 
 ---
 
-## 三、版本回退指南
+## 四、版本回退指南
 
 ### 3.1 场景1：还没提交，想放弃当前修改
 
@@ -233,7 +299,7 @@ $ git checkout master
 
 ---
 
-## 四、常见问题解决
+## 五、常见问题解决
 
 ### 4.1 合并冲突（Conflict）
 
@@ -328,7 +394,7 @@ $ git commit -m "提交信息"
 
 ---
 
-## 五、命令速查表
+## 六、命令速查表
 
 ### 5.1 基础命令
 
@@ -452,4 +518,4 @@ $ git branch -d 20240316-image-upload-emdoor
 
 ---
 
-*最后更新：2026年3月17日*
+*最后更新：2026年3月29日（迁移至 GitHub 远程仓库）*
