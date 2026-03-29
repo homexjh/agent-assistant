@@ -19,18 +19,18 @@
 
 ## 一、日常开发流程
 
-### 1.1 每天开始工作
+### 1.1 每天开始工作（任意电脑）
 
 ```bash
 # 1. 切换到 master 分支
 $ git checkout master
 
-# 2. 拉取最新代码（获取同事的更新）
-$ git pull
+# 2. 拉取最新代码（同步其他设备的更新）
+$ git pull origin master
 
 # 3. 创建今天的功能分支
-# 命名格式：日期-功能-姓名
-$ git checkout -b 20240316-tts-zhangsan
+# 命名格式：feature/功能简述-日期
+$ git checkout -b feature/tts-20240316
 ```
 
 ### 1.2 开发过程中
@@ -62,31 +62,32 @@ $ git push -u origin 20240316-tts-zhangsan
 | `test:`     | 添加测试  | `test: 添加子Agent单元测试`  |
 | `chore:`    | 构建/工具 | `chore: 添加.gitignore`      |
 
-### 1.3 完成开发，推送到远程
+### 1.3 完成开发，合并到 master 并推送
 
-因为是单人跨设备开发，直接在 `master` 分支上推送即可，无需 PR/MR：
+功能开发完成并测试通过后，合并回 master：
 
 ```bash
 # 1. 切回 master
 $ git checkout master
 
 # 2. 拉取最新代码（防止另一台设备已推送更新）
-$ git pull
+$ git pull origin master
 
-# 3. 合并你的功能分支（如果有的话）
-$ git merge 20240316-tts-zhangsan
+# 3. 合并你的功能分支
+$ git merge feature/tts-20240316
 
 # 4. 推送到远程 master
-$ git push
+$ git push origin master
 
-# 5. 删除本地功能分支（可选）
-$ git branch -d 20240316-tts-zhangsan
+# 5. 删除本地功能分支
+$ git branch -d feature/tts-20240316
 ```
 
 **单人开发核心原则**：
-- 换电脑前：**先 `git push`**，把代码同步到 GitHub
-- 换电脑后：**先 `git pull`**，拉取最新代码再开始写
-- 冲突时：手动解决后重新 `git push`
+- **永远不在 master 上直接开发**，所有改动走功能分支
+- 换电脑前：**先合并并 `git push origin master`**
+- 换电脑后：**先 `git pull origin master`**，再创建新分支
+- 冲突时：手动解决后重新 `git push origin master`
 
 ---
 
@@ -144,13 +145,15 @@ git config user.email "你的邮箱"
 ### 2.1 分支命名规则
 
 ```
-格式：日期-功能-姓名
+格式：feature/功能简述-日期
+      fix/问题描述-日期
+      docs/文档内容-日期
 
 示例：
-- 20240316-tts-zhangsan          # 张三开发语音功能
-- 20240316-fix-bug-lisi          # 李四修复bug
-- 20240316-docs-readme-wangwu    # 王五更新文档
-- 20240316-refactor-tools-emdoor # emdoor重构工具系统
+- feature/tts-20240316           # 开发语音功能
+- feature/image-upload-20240316  # 开发图片上传
+- fix/browser-crash-20240316     # 修复浏览器崩溃
+- docs/readme-update-20240316    # 更新文档
 ```
 
 ### 2.2 分支是否必须删除？
@@ -159,13 +162,13 @@ git config user.email "你的邮箱"
 
 ```bash
 # 删除本地分支
-$ git branch -d 20240316-tts-zhangsan
+$ git branch -d feature/tts-20240316
 
 # 如果提示未合并，强制删除（确定不要了）
-$ git branch -D 20240316-tts-zhangsan
+$ git branch -D feature/tts-20240316
 
 # 删除远程分支（可选）
-$ git push origin --delete 20240316-tts-zhangsan
+$ git push origin --delete feature/tts-20240316
 ```
 
 **情况2：长期维护的分支 → 保留**
@@ -351,7 +354,7 @@ $ git push
 $ git stash
 
 # 2. 创建新分支
-$ git checkout -b 20240316-tts-zhangsan
+$ git checkout -b feature/tts-20240316
 
 # 3. 恢复修改
 $ git stash pop
@@ -368,7 +371,7 @@ $ git commit -m "feat: 添加语音功能"
 $ git reflog
 
 # 找到删除前的 commit id，比如：abc1234
-$ git checkout -b 20240316-tts-zhangsan abc1234
+$ git checkout -b feature/tts-20240316 abc1234
 ```
 
 ### 4.5 大文件提交失败
@@ -449,21 +452,21 @@ git pull
 ### 6.2 开发新功能时
 
 ```bash
-git checkout -b 日期-功能-姓名
+git checkout -b feature/xxx-日期
 # 开发...
 git add .
 git commit -m "feat: xxx"
-git push -u origin 日期-功能-姓名
+git push -u origin feature/xxx-日期
 ```
 
 ### 6.3 完成开发后
 
 ```bash
 git checkout master
-git pull
-git merge 日期-功能-姓名
-git push
-git branch -d 日期-功能-姓名  # 可选
+git pull origin master
+git merge feature/xxx-日期
+git push origin master
+git branch -d feature/xxx-日期
 ```
 
 ### 6.4 重要原则
@@ -483,10 +486,10 @@ git branch -d 日期-功能-姓名  # 可选
 ```bash
 # 1. 开始工作
 $ git checkout master
-$ git pull
+$ git pull origin master
 
 # 2. 创建分支
-$ git checkout -b 20240316-image-upload-emdoor
+$ git checkout -b feature/image-upload-20240316
 
 # 3. 开发...
 $ vim aiagent/serve.py
@@ -497,16 +500,16 @@ $ git commit -m "feat: Web界面支持图片上传"
 $ vim aiagent/serve.py
 $ git add .
 $ git commit -m "feat: 添加图片压缩功能"
-$ git push -u origin 20240316-image-upload-emdoor
+$ git push -u origin feature/image-upload-20240316
 
-# 5. 测试OK，合并
+# 5. 测试OK，合并到 master
 $ git checkout master
-$ git pull
-$ git merge 20240316-image-upload-emdoor
-$ git push
+$ git pull origin master
+$ git merge feature/image-upload-20240316
+$ git push origin master
 
 # 6. 清理
-$ git branch -d 20240316-image-upload-emdoor
+$ git branch -d feature/image-upload-20240316
 ```
 
 ---
