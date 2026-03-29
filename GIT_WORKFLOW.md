@@ -62,86 +62,79 @@ $ git push -u origin 20240316-tts-zhangsan
 | `test:`     | 添加测试  | `test: 添加子Agent单元测试`  |
 | `chore:`    | 构建/工具 | `chore: 添加.gitignore`      |
 
-### 1.3 完成开发，合并到 master（推荐通过 Pull Request）
+### 1.3 完成开发，推送到远程
 
-**方式一：通过 GitHub Pull Request（推荐，适合团队协作）**
-
-```bash
-# 1. 推送你的功能分支到远程
-$ git push -u origin 20240316-tts-zhangsan
-
-# 2. 打开 GitHub 仓库页面
-#    https://github.com/homexjh/agent-assistant
-
-# 3. 点击 "Compare & pull request" 创建 PR
-# 4. 填写 PR 标题和描述，请求合并到 master
-# 5. 由项目维护者 Review 后点击 "Merge pull request"
-
-# 6. 合并后，本地切换到 master 并拉取最新代码
-$ git checkout master
-$ git pull
-
-# 7. 删除本地分支（可选）
-$ git branch -d 20240316-tts-zhangsan
-
-# 8. 删除远程分支（可选）
-$ git push origin --delete 20240316-tts-zhangsan
-```
-
-**方式二：本地直接合并（仅适合个人开发或紧急情况）**
+因为是单人跨设备开发，直接在 `master` 分支上推送即可，无需 PR/MR：
 
 ```bash
 # 1. 切回 master
 $ git checkout master
 
-# 2. 拉取最新代码（确保基于最新版本）
+# 2. 拉取最新代码（防止另一台设备已推送更新）
 $ git pull
 
-# 3. 合并你的分支
+# 3. 合并你的功能分支（如果有的话）
 $ git merge 20240316-tts-zhangsan
 
 # 4. 推送到远程 master
 $ git push
 
-# 5. 删除本地分支（可选）
+# 5. 删除本地功能分支（可选）
 $ git branch -d 20240316-tts-zhangsan
 ```
 
+**单人开发核心原则**：
+- 换电脑前：**先 `git push`**，把代码同步到 GitHub
+- 换电脑后：**先 `git pull`**，拉取最新代码再开始写
+- 冲突时：手动解决后重新 `git push`
+
 ---
 
-## 二、协同开发模式
+## 二、多设备开发工作流
 
-### 2.1 直接协作（推荐给小团队）
+### 2.1 核心场景
 
-**前提**：项目 Owner 在 GitHub 上添加你为协作者。
+- **电脑 A**（公司）：白天写代码 → `git push`
+- **电脑 B**（家里）：晚上继续 → `git pull` → 写代码 → `git push`
+- **电脑 C**（笔记本）：出差时用 → `git pull` → 写代码 → `git push`
 
-1. Owner 打开 https://github.com/homexjh/agent-assistant/settings/access
-2. 点击 **Invite a collaborator**，输入你的 GitHub 用户名
-3. 接受邀请后，即可直接推送分支和创建 PR
-
-### 2.2 Fork 协作（推荐给外部贡献者）
-
-1. 打开 https://github.com/homexjh/agent-assistant
-2. 点击右上角 **Fork** 按钮，复制仓库到自己的账号下
-3. 克隆自己的 Fork 到本地：
-   ```bash
-   git clone https://github.com/你的用户名/agent-assistant.git
-   cd agent-assistant
-   ```
-4. 开发完成后，向原仓库提交 Pull Request
-
-### 2.3 首次克隆项目
+### 2.2 新设备首次配置
 
 ```bash
-# 克隆仓库
+# 1. 克隆仓库
 git clone https://github.com/homexjh/agent-assistant.git
 cd agent-assistant
 
-# 安装依赖
+# 2. 安装依赖
 uv sync
 
-# 复制环境变量模板（各自配置自己的 API Key）
+# 3. 复制环境变量模板（每台电脑各自配置 API Key）
 cp .env.example .env
+# 然后编辑 .env，填入该设备上的 API Key
+```
+
+### 2.3 跨设备同步流程
+
+**在电脑 A 上结束工作前：**
+```bash
+git add .
+git commit -m "feat: xxx"
+git push origin master
+```
+
+**在电脑 B 上开始工作前：**
+```bash
+git pull origin master
+```
+
+### 2.4 如果不同账号提交（可选）
+
+如果你在不同电脑上使用不同的 Git 用户名/邮箱，可以在项目内单独配置（不影响全局）：
+
+```bash
+# 仅对当前仓库生效
+git config user.name "你的名称"
+git config user.email "你的邮箱"
 ```
 
 ---
